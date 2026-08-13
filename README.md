@@ -40,19 +40,3 @@ clang -I include -I . libkbase_csf.c test_gpu_write.c -o test_gpu_write
 
 clang -I include -I . libkbase_csf.c test_gpu_copy_v2.c -o test_gpu_copy_v2
 ./test_gpu_copy_v2
-
-## 🙏 Créditos
-
-- **Icecream95** – Autor original do `pan_base` e da engenharia reversa da UAPI kbase.
-- **Panfork** (gitlab.com/panfork/mesa) – Mantenedores atuais da camada `pan_base`.
-- **Saikatsaha1996** (mesa-Panfrost-G610) – Fork com suporte a G610/G710 e contribuições para CSF.
-- **Comunidade Panfrost** – Pelo trabalho contínuo no driver open‑source.
-
-Este projeto utiliza sequências de ioctls e flags inspiradas no Panfork, conforme as notas técnicas.
-
-## 🙏 Créditos
-
-- **Icecream95** – autor original do `pan_base` e engenharia reversa da UAPI kbase
-- **Panfork** (gitlab.com/panfork/mesa) – mantenedores da camada `pan_base`
-- **Saikatsaha1996** (mesa-Panfrost-G610) – contribuições para G610/G710
-- **wonderkast02** – adaptações para Mali-G720
