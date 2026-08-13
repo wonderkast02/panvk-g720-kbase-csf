@@ -1,0 +1,7 @@
+*.o
+*.out
+*.exe
+test_gpu_write
+test_gpu_copy_v2
+test_backend
+test_lib
