@@ -1,0 +1,41 @@
+From a6799dbeb02ff1c3677f491767fd35929994e58c Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Fri, 14 Aug 2026 22:17:39 -0300
+Subject: [PATCH] panvk/kbase: use CSF-reported register count for G720
+
+---
+ src/panfrost/lib/kmod/kbase_kmod.c           | 4 +++-
+ src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c | 2 ++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/panfrost/lib/kmod/kbase_kmod.c b/src/panfrost/lib/kmod/kbase_kmod.c
+index 2caa259..2be7f6f 100644
+--- a/src/panfrost/lib/kmod/kbase_kmod.c
++++ b/src/panfrost/lib/kmod/kbase_kmod.c
+@@ -455,7 +455,9 @@ kbase_query_csif_info(int fd, struct drm_panthor_csif_info *csif)
+    *csif = (struct drm_panthor_csif_info){
+       .csg_slot_count = group_num,
+       .cs_slot_count = groups[0].stream_num,
+-      .cs_reg_count = 96,
++      /* Same encoding used by panthor:
++       * bits [7:0] contain WORK_REGS - 1. */
++      .cs_reg_count = (stream_features & 0xff) + 1,
+       .scoreboard_slot_count =
+          (scoreboard_slot_count - 1) < 16 ? scoreboard_slot_count : 8,
+       /* Number of CS registers the FW may clobber; matches panthor's
+diff --git a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+index ca0392d..40f7ac7 100644
+--- a/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
++++ b/src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+@@ -494,6 +494,8 @@ kbase_subqueue_emit_job(struct panvk_gpu_queue *queue, uint32_t subqueue,
+    };
+    struct cs_builder_conf conf = {
+       .nr_registers = csif_info->cs_reg_count,
++      .nr_kernel_registers =
++         MAX2(csif_info->unpreserved_cs_reg_count, 4),
+       .ls_sb_slot = SB_ID(LS),
+    };
+    struct cs_builder b;
+-- 
+2.53.0
+
