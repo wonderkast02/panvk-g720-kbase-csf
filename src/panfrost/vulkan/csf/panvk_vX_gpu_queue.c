@@ -494,6 +494,8 @@ kbase_subqueue_emit_job(struct panvk_gpu_queue *queue, uint32_t subqueue,
    };
    struct cs_builder_conf conf = {
       .nr_registers = csif_info->cs_reg_count,
+      .nr_kernel_registers =
+         MAX2(csif_info->unpreserved_cs_reg_count, 4),
       .ls_sb_slot = SB_ID(LS),
    };
    struct cs_builder b;

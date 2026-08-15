@@ -455,7 +455,9 @@ kbase_query_csif_info(int fd, struct drm_panthor_csif_info *csif)
    *csif = (struct drm_panthor_csif_info){
       .csg_slot_count = group_num,
       .cs_slot_count = groups[0].stream_num,
-      .cs_reg_count = 96,
+      /* Same encoding used by panthor:
+       * bits [7:0] contain WORK_REGS - 1. */
+      .cs_reg_count = (stream_features & 0xff) + 1,
       .scoreboard_slot_count =
          (scoreboard_slot_count - 1) < 16 ? scoreboard_slot_count : 8,
       /* Number of CS registers the FW may clobber; matches panthor's
