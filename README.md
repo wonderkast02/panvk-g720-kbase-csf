@@ -1,60 +1,215 @@
-# Mali-G720 Kbase CSF Proof of Concept
+# Mali-G720 Kbase/CSF + PanVK
 
-Este repositório documenta a prova de conceito de **execução de comandos na GPU Mali-G720** através da interface **Kbase/CSF** no Android, sem depender do driver Vulkan proprietário.
+Projeto experimental para adaptar o **Mesa/PanVK** à **Arm Mali-G720** utilizando diretamente a interface **Kbase/CSF** presente em kernels Android.
 
-## 🚀 Conquistas
+## 🎯 Hardware testado
 
-- ✅ Inicialização do contexto Kbase via `/dev/mali0` com `VERSION_CHECK` e `SET_FLAGS`.
-- ✅ Alocação de memória GPU com `BASE_MEM_SAME_VA`.
-- ✅ Criação de CSG (Command Stream Group) e fila CSF.
-- ✅ Bind da fila e mapeamento das páginas de interface (doorbell, input, output).
-- ✅ Escrita nos registradores de controle (32 bits).
-- ✅ Emissão de comandos CSF reais: `MOVE48`, `MOVE32`, `SYNC_SET32`, `LOAD_MULTIPLE`, `STORE_MULTIPLE`, `WAIT`.
-- ✅ **Prova de escrita em memória pela GPU** (`test_gpu_write.c`).
-- ✅ **Prova de cópia de memória pela GPU** (`test_gpu_copy_v2.c`).
-- ✅ Mapeamento da UAPI Kbase r49p1.
+- **SoC:** MediaTek MT6899
+- **GPU:** Mali-G720 MC8
+- **GPU ID:** `0xc8700010`
+- **Vendor ID:** `0x13b5`
+- **Kbase:** r49p1
+- **UK version:** 1.30
+- **Device:** `/dev/mali0`
 
-## 📂 Principais arquivos
+> ⚠️ Projeto experimental e ainda em desenvolvimento.
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `libkbase_csf.h/.c` | Biblioteca que encapsula inicialização, alocação e submissão. |
-| `test_gpu_write.c` | Teste que faz a GPU escrever `0xDEADBEEF` em um buffer. |
-| `test_gpu_copy_v2.c` | Teste que faz a GPU copiar 4 bytes usando `LOAD_MULTIPLE`/`STORE_MULTIPLE` com `WAIT`. |
-| `test_backend.c` | Teste da camada de abstração `kbase_kmod_test`. |
-| `pan_kmod_kbase.c` | Backend experimental para integração com o Mesa/PanVK. |
-| `include/` | Headers da UAPI Kbase usados para compilar os testes. |
+---
 
-## 🔧 Compilação dos testes
+## 🚀 Estado atual
 
-### Requisitos
+### Kbase / CSF
 
-- Termux com `clang` instalado.
-- Headers do Kbase copiados em `include/`.
+- ✅ Acesso funcional ao `/dev/mali0`
+- ✅ UK version **1.30** confirmada
+- ✅ Propriedades reais da GPU obtidas
+- ✅ UAPI Kbase **r49p1** validada
+- ✅ `CS_GET_GLB_IFACE` funcionando
+- ✅ `MEM_ALLOC_EX` / `BASE_MEM_SAME_VA`
+- ✅ mmap CPU/GPU funcionando
+- ✅ Criação de CSG e filas CSF
+- ✅ Queue bind / kick funcionando
+- ✅ Interfaces CSF mapeadas
+- ✅ Emissão de comandos CSF reais
+- ✅ Escrita real em memória pela GPU
+- ✅ Cópia real de memória pela GPU
 
-### Comandos de exemplo
+---
 
-```bash
-clang -I include -I . libkbase_csf.c test_gpu_write.c -o test_gpu_write
-./test_gpu_write
+## Mesa / PanVK
 
-clang -I include -I . libkbase_csf.c test_gpu_copy_v2.c -o test_gpu_copy_v2
-./test_gpu_copy_v2
+A etapa atual da integração utiliza como principal base:
+
+- **Leegao:** https://github.com/leegao/mesa-funnymdzz
+- **funnymdzz:** https://github.com/funnymdzz/mesa
+
+O fork do **Leegao** trouxe uma implementação muito mais completa de PanVK sobre Kbase e permitiu avançar significativamente a adaptação para a Mali-G720.
+
+### Avanços comprovados
+
+- ✅ Mesa/PanVK compilado nativamente em AArch64
+- ✅ Backend Kbase habilitado
+- ✅ Backends `panfrost`, `panthor` e `kbase` coexistindo
+- ✅ PanVK encontra diretamente `/dev/mali0`
+- ✅ Mali-G720 identificada corretamente
+- ✅ BOs e ringbuffers Kbase funcionando
+- ✅ Subqueues CSF 0/1/2 funcionando
+- ✅ `seqno` chegando ao valor esperado
+- ✅ Espera das filas concluindo corretamente
+- ✅ `vulkaninfo --summary` concluído com **exit 0**
+
+Resultado real:
+
+```text
+Found kbase device '/dev/mali0'.
+
+panvk (Mali-G720 MC8)
+
+apiVersion = 1.4.354
+vendorID   = 0x13b5
+deviceID   = 0xc8700010
+deviceType = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+deviceName = Mali-G720 MC8
+driverName = panvk
 ```
 
+---
 
-🙏 Créditos
+## 🔧 Correção descoberta para Mali-G720
 
-· Icecream95 – Autor original do pan_base e da engenharia reversa da UAPI kbase.
+O backend Kbase usado como base assumia inicialmente:
 
-· Panfork (gitlab.com/panfork/mesa) – Mantenedores atuais da camada pan_base.
+```c
+.cs_reg_count = 96,
+```
 
-· Saikatsaha1996 (mesa-Panfrost-G610) – Fork com suporte a G610/G710 e contribuições para CSF.
+Na Mali-G720 isso fazia o PanVK abortar com:
 
-· Comunidade Panfrost – Pelo trabalho contínuo no driver open‑source.
+```text
+overflowed register file
+```
 
-· wonderkast02 – Adaptações para Mali-G720 e documentação da POC.
+A correção foi utilizar a quantidade de work registers anunciada pela própria interface CSF:
 
-⚠️ Aviso
+```c
+.cs_reg_count = (stream_features & 0xff) + 1,
+```
 
-Este é um projeto experimental de prova de conceito. O código pode conter falhas e não é recomendado para uso em produção. Use por sua conta e risco.
+Também foi configurada explicitamente a reserva dos registradores não preservados pelo firmware:
+
+```c
+.nr_kernel_registers =
+   MAX2(csif_info->unpreserved_cs_reg_count, 4),
+```
+
+Após a correção:
+
+```text
+BUILD OK
+vulkaninfo exit=0
+deviceName = Mali-G720 MC8
+driverName = panvk
+```
+
+Também foi observado progresso real das filas CSF:
+
+```text
+extract=320
+ls_copy=1
+cell->seqno=1
+target_seqno=1
+```
+
+e:
+
+```text
+kbase_queue_wait_current: wait completed successfully
+```
+
+Isso mostra que o trabalho já ultrapassou a simples detecção da GPU e chegou à execução e sincronização das filas CSF.
+
+---
+
+## 🧪 Proof of Concept original
+
+O repositório também preserva os testes usados durante a primeira etapa da engenharia reversa.
+
+| Arquivo | Descrição |
+|---|---|
+| `libkbase_csf.c/.h` | Inicialização, memória e submissão Kbase/CSF |
+| `test_gpu_write.c` | GPU escreve `0xDEADBEEF` em memória |
+| `test_gpu_copy_v2.c` | Cópia de memória executada pela GPU |
+| `test_backend.c` | Testes do backend experimental |
+| `pan_kmod_kbase.c` | Primeiro backend experimental Mesa/Kbase |
+| `include/` | Headers da UAPI Kbase |
+
+---
+
+## 🛣️ Próximos passos
+
+- Testar estabilidade sem `PANVK_DEBUG=kbase_diag`
+- Executar workloads Vulkan/compute reais
+- Validar execução de shaders
+- Testar renderização offscreen
+- Investigar sincronização sob carga
+- Identificar e corrigir possíveis GPU faults
+- Evoluir para Android / Winlator
+- Consolidar o backend Kbase para Mali-G720
+
+---
+
+## 🙏 Créditos
+
+### Leegao
+
+**https://github.com/leegao**
+
+Autor do fork:
+
+**https://github.com/leegao/mesa-funnymdzz**
+
+Principal base usada na etapa atual da integração **PanVK sobre Kbase**.
+
+### funnymdzz
+
+**https://github.com/funnymdzz**
+
+Autor do trabalho base:
+
+**https://github.com/funnymdzz/mesa**
+
+Trabalho focado em PanVK sobre Kbase em containers Linux/Android.
+
+### Icecream95
+
+Pelo trabalho pioneiro relacionado ao Panfork/Panfrost e à engenharia reversa de GPUs Mali e Kbase.
+
+### Mesa / Panfrost / PanVK
+
+Pelo desenvolvimento open-source da infraestrutura e do compilador utilizados neste projeto.
+
+### Saikatsaha1996 / mesa-Panfrost-G610
+
+Pelas referências e contribuições comunitárias envolvendo Mali G610/G710 e CSF.
+
+### wonderkast02
+
+Desenvolvimento e validação em:
+
+- MediaTek MT6899
+- Mali-G720
+- Kbase r49p1
+- Engenharia reversa do driver vendor
+- Validação da UAPI
+- Testes CSF
+- Adaptação do backend Kbase
+- Correção do CS register count para G720
+- Testes e documentação
+
+---
+
+## ⚠️ Aviso
+
+Projeto experimental de pesquisa e engenharia reversa.
+
+O código ainda pode causar GPU faults, travamentos ou exigir reinicialização durante o desenvolvimento.
