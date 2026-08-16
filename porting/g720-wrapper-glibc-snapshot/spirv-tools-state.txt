@@ -1,0 +1,13 @@
+===== SPIRV-TOOLS =====
+9113deed32ba366b765a148f474ca86c3890db6a
+9113dee Add test harness
+
+===== REMOTES =====
+origin	https://github.com/leegao/SPIRV-Tools.git (fetch)
+origin	https://github.com/leegao/SPIRV-Tools.git (push)
+
+===== STATUS =====
+
+===== SPIRV-HEADERS =====
+97e96f9e9defeb4bba3cfbd034dec516671dd7a3
+97e96f9 SPV_KHR_untyped_pointers final (#536)

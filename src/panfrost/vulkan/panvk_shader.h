@@ -115,6 +115,22 @@ struct panvk_common_sysvals {
    struct panvk_common_sysvals_inner common;
 } __attribute__((aligned(FAU_WORD_SIZE)));
 
+/*
+ * libpoly parameter buffers.
+ *
+ * Keep this block at the same offset in graphics and compute sysvals.
+ * It intentionally lives outside panvk_common_sysvals_inner because
+ * prepare_push_uniforms() synthesizes the common block instead of copying
+ * it from command-buffer state.
+ */
+struct panvk_poly_sysvals {
+   aligned_u64 vertex_param_buffer;
+   aligned_u64 tess_param_buffer;
+} __attribute__((aligned(FAU_WORD_SIZE)));
+
+static_assert((sizeof(struct panvk_poly_sysvals) % FAU_WORD_SIZE) == 0,
+              "struct panvk_poly_sysvals must be 8-byte aligned");
+
 static_assert((offsetof(struct panvk_common_sysvals, common) %
                FAU_WORD_SIZE) == 0,
               "struct panvk_graphics_sysvals_inner must be 8-byte aligned");
@@ -140,6 +156,9 @@ struct panvk_graphics_sysvals {
 
    /* This must be at the same offset for both compute and graphics */
    struct panvk_common_sysvals_inner common;
+
+   /* libpoly draw/tessellation parameter buffers */
+   struct panvk_poly_sysvals poly;
 
    struct {
       struct {
@@ -204,6 +223,9 @@ struct panvk_compute_sysvals {
    /* This must be at the same offset for both compute and graphics */
    struct panvk_common_sysvals_inner common;
 
+   /* libpoly draw/tessellation parameter buffers */
+   struct panvk_poly_sysvals poly;
+
    struct {
       uint32_t x, y, z;
    } num_work_groups;
@@ -221,6 +243,10 @@ struct panvk_compute_sysvals {
 static_assert(offsetof(struct panvk_compute_sysvals, common) ==
                  offsetof(struct panvk_common_sysvals, common),
               "Common sysvals must be at the same offset everywhere");
+
+static_assert(offsetof(struct panvk_graphics_sysvals, poly) ==
+                 offsetof(struct panvk_compute_sysvals, poly),
+              "Poly sysvals must be at the same offset for graphics and compute");
 static_assert((sizeof(struct panvk_compute_sysvals) % FAU_WORD_SIZE) == 0,
               "struct panvk_compute_sysvals must be 8-byte aligned");
 #if PAN_ARCH < 9

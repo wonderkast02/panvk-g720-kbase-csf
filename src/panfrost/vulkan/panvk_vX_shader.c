@@ -42,6 +42,8 @@
 #include "compiler/pan_nir.h"
 #include "pan_shader.h"
 
+#include "poly/nir/poly_nir.h"
+
 #include "vk_log.h"
 #include "vk_pipeline.h"
 #include "vk_pipeline_layout.h"
@@ -193,6 +195,38 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
       val = nir_channel(b, ia_info, 1);
       break;
    }
+
+   case nir_intrinsic_load_vertex_param_buffer_poly:
+      /*
+       * Software VS/TCS run through the compute path.  A future graphics
+       * consumer may use the graphics copy of the same ABI.
+       */
+      if (b->shader->info.stage == MESA_SHADER_COMPUTE ||
+          b->shader->info.stage == MESA_SHADER_KERNEL) {
+         val = load_sysval(b, compute, bit_size,
+                           poly.vertex_param_buffer);
+      } else {
+         assert(b->shader->info.stage == MESA_SHADER_VERTEX);
+         val = load_sysval(b, graphics, bit_size,
+                           poly.vertex_param_buffer);
+      }
+      break;
+
+   case nir_intrinsic_load_tess_param_buffer_poly:
+      /*
+       * TCS is lowered to compute; TES is lowered by libpoly to a hardware
+       * vertex shader.  Select the appropriate FAU block after that lowering.
+       */
+      if (b->shader->info.stage == MESA_SHADER_COMPUTE ||
+          b->shader->info.stage == MESA_SHADER_KERNEL) {
+         val = load_sysval(b, compute, bit_size,
+                           poly.tess_param_buffer);
+      } else {
+         assert(b->shader->info.stage == MESA_SHADER_VERTEX);
+         val = load_sysval(b, graphics, bit_size,
+                           poly.tess_param_buffer);
+      }
+      break;
 
    case nir_intrinsic_load_ro_sink_address_poly:
       val = nir_imm_int64(b, PAN_SHADER_OOB_ADDRESS);
@@ -990,6 +1024,29 @@ panvk_lower_nir_io(nir_shader *nir)
    NIR_PASS(_, nir, nir_opt_constant_folding);
 }
 
+/*
+ * Lower tessellation shader IO to NIR IO intrinsics without forcing
+ * indirect per-vertex accesses through if/else trees.
+ *
+ * libpoly consumes load/store_per_vertex_{input,output} directly.
+ */
+static void
+panvk_lower_tess_nir_io(nir_shader *nir)
+{
+   NIR_PASS(_, nir, nir_lower_var_copies);
+
+   NIR_PASS(_, nir, nir_lower_io,
+            nir_var_shader_in | nir_var_shader_out,
+            glsl_type_size,
+            nir_lower_io_use_interpolated_input_intrinsics);
+
+   /*
+    * Fold array/location arithmetic so poly sees the simplest possible
+    * IO addressing while preserving dynamic per-vertex indexing.
+    */
+   NIR_PASS(_, nir, nir_opt_constant_folding);
+}
+
 static VkResult
 panvk_compile_nir(struct panvk_device *dev, nir_shader *nir,
                   VkShaderCreateFlagsEXT shader_flags,
@@ -1511,6 +1568,113 @@ panvk_compile_shader(struct panvk_device *dev,
             return result;
          }
       }
+      break;
+   }
+
+   case MESA_SHADER_TESS_CTRL: {
+      struct panvk_shader_variant *variant =
+         (struct panvk_shader_variant *)panvk_shader_only_variant(shader);
+
+      nir_shader *nir = info->nir;
+
+      /*
+       * libpoly expects regular NIR IO intrinsics, including the
+       * per-vertex TCS forms.  Do this while the shader is still
+       * MESA_SHADER_TESS_CTRL.
+       */
+      nir_assign_io_var_locations(nir, nir_var_shader_in);
+      nir_assign_io_var_locations(nir, nir_var_shader_out);
+      panvk_lower_tess_nir_io(nir);
+
+      /*
+       * Save this before destroying the tessellation stage information.
+       * One compute workgroup represents one TCS output patch.
+       */
+      const uint32_t output_patch_size =
+         nir->info.tess.tcs_vertices_out;
+
+      assert(output_patch_size > 0);
+
+      /*
+       * Mali-G720 reports subgroupSize=16, while Vulkan tessellation must
+       * be able to handle patches larger than a single such subgroup.
+       *
+       * Preserve shader-output barriers as global-memory WORKGROUP
+       * barriers so all invocations belonging to the patch synchronize.
+       */
+      NIR_PASS(_, nir, poly_nir_lower_tcs_with_output_scope,
+               false, SCOPE_WORKGROUP);
+
+      /*
+       * Resolve libpoly pseudo-sysvals such as index_size/vs_outputs into
+       * accesses through the poly parameter buffers where applicable.
+       */
+      NIR_PASS(_, nir, poly_nir_lower_sysvals);
+
+      /*
+       * From this point onward the hardware sees a compute shader.
+       *
+       * TCS invocation_id maps to local_invocation_id.x and one patch maps
+       * to one workgroup, therefore X exactly matches OutputVertices.
+       */
+      nir->info.stage = MESA_SHADER_COMPUTE;
+      memset(&nir->info.cs, 0, sizeof(nir->info.cs));
+
+      nir->info.workgroup_size[0] = output_patch_size;
+      nir->info.workgroup_size[1] = 1;
+      nir->info.workgroup_size[2] = 1;
+      nir->info.workgroup_size_variable = false;
+
+      nir->xfb_info = NULL;
+
+      /*
+       * All subsequent Panfrost passes/backend compilation must use
+       * compute-stage compiler assumptions.
+       */
+      nir->options =
+         pan_get_nir_shader_compiler_options(
+            PAN_ARCH, MESA_SHADER_COMPUTE, false);
+
+      /*
+       * Refresh info after changing stage and replacing TCS IO by global
+       * memory operations / compute system values.
+       */
+      nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
+      /*
+       * Never merge software-TCS workgroups.  One Vulkan patch is one
+       * synchronization domain.
+       */
+      variant->info.cs.allow_merging_workgroups = false;
+
+      /*
+       * Descriptor lowering is intentionally done only now, after the
+       * shader became COMPUTE.  PanVK's descriptor implementation has no
+       * native TESS_CTRL descriptor stage.
+       */
+      panvk_lower_nir(dev, nir,
+                      info->set_layout_count,
+                      info->set_layouts,
+                      info->robustness,
+                      state,
+                      &shader->desc_info,
+                      false);
+
+      variant->own_bin = true;
+
+      result = panvk_compile_nir(dev, nir,
+                                 info->flags,
+                                 &inputs,
+                                 state,
+                                 noperspective_varyings,
+                                 &shader->desc_info,
+                                 variant);
+
+      if (result != VK_SUCCESS) {
+         panvk_shader_destroy(&dev->vk, &shader->vk, pAllocator);
+         return result;
+      }
+
       break;
    }
 

@@ -55,6 +55,22 @@ bool poly_nir_lower_gs(struct nir_shader *gs, struct nir_shader **gs_count,
 bool poly_nir_lower_tcs(struct nir_shader *tcs,
                         bool can_ignore_shader_out_barriers);
 
+/*
+ * Variant of poly_nir_lower_tcs() for backends where a complete
+ * tessellation patch may span multiple hardware subgroups.
+ *
+ * shader_out_scope controls the execution/memory scope used when a
+ * TCS barrier originally targeted only shader outputs.
+ *
+ * Existing users of poly_nir_lower_tcs() retain SCOPE_SUBGROUP.
+ * Software TCS implementations which map one complete patch to a
+ * compute workgroup can request SCOPE_WORKGROUP.
+ */
+bool poly_nir_lower_tcs_with_output_scope(
+   struct nir_shader *tcs,
+   bool can_ignore_shader_out_barriers,
+   mesa_scope shader_out_scope);
+
 bool poly_nir_lower_tes(struct nir_shader *tes, bool to_hw_vs);
 
 uint64_t poly_tcs_per_vertex_outputs(const struct nir_shader *nir);

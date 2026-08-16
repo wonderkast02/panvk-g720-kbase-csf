@@ -1645,8 +1645,6 @@ kbase_kmod_bo_alloc(struct pan_kmod_dev *dev,
    kbase_bo->gpu_mapping = cpu_ptr;
    kbase_bo->gpu_va = kbase_bo->same_va ? (uintptr_t)cpu_ptr : alloc_gpu_va;
 
-   mesa_logi("%s: successfully allocated gpu_va=%" PRIx64 " cpu=%p size=%zu",
-             __func__, kbase_bo->gpu_va, kbase_bo->cpu_ptr, kbase_bo->base.size);
 
    /* Allocate a unique u32 handle for the pan_kmod handle_to_bo table. */
    uint32_t handle = p_atomic_inc_return(&kbase_dev->next_handle);

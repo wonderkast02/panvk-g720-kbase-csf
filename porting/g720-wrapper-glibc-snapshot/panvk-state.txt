@@ -1,0 +1,17 @@
+===== MESA/PANVK HEAD =====
+a6799dbeb02ff1c3677f491767fd35929994e58c
+a6799db panvk/kbase: use CSF-reported register count for G720
+8dfd821 more logging / less spammy
+
+===== BRANCH =====
+ci
+
+===== STATUS =====
+ M src/panfrost/lib/kmod/kbase_kmod.c
+ M src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+?? porting/
+?? src/panfrost/lib/kmod/kbase_kmod.c.before-g720-regcount
+?? src/panfrost/lib/kmod/kbase_kmod.c.before-log-cleanup
+?? src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c.before-g720-regcount
+?? src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c.before-log-cleanup
+?? "tall -y libllvmspirvlib-21-dev"

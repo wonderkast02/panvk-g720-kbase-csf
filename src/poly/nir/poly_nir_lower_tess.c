@@ -90,9 +90,14 @@ tcs_load_input(nir_builder *b, nir_intrinsic_instr *intr)
    return poly_load_per_vertex_input(b, intr, vertex);
 }
 
+struct poly_tcs_lower_options {
+   bool can_ignore_shader_out_barriers;
+   mesa_scope shader_out_scope;
+};
+
 static nir_def *
 lower_tcs_impl(nir_builder *b, nir_intrinsic_instr *intr,
-               bool can_ignore_shader_out_barriers)
+               const struct poly_tcs_lower_options *options)
 {
    switch (intr->intrinsic) {
    case nir_intrinsic_barrier: {
@@ -110,18 +115,26 @@ lower_tcs_impl(nir_builder *b, nir_intrinsic_instr *intr,
 
       /* A barrier that only targeted shader outputs can be dropped entirely by
        * drivers that don't need it. */
-      if (can_ignore_shader_out_barriers && !modes)
+      if (options->can_ignore_shader_out_barriers && !modes)
          return NIR_LOWER_INSTR_PROGRESS_REPLACE;
 
-      /* Keep the original scopes while the barrier still targets other modes;
-       * otherwise a subgroup scope suffices since a patch fits in a subgroup.
-       * Drivers that can't ignore the shader-output barrier must preserve it
-       * against the lowered global memory. */
+      /*
+       * Keep the original scopes while the barrier still targets other
+       * memory modes.
+       *
+       * When the barrier targeted only shader outputs, use the scope chosen
+       * by the backend.  Some implementations execute a complete patch in a
+       * single subgroup, while software TCS implementations may need a full
+       * compute workgroup when the patch spans multiple subgroups.
+       */
       mesa_scope execution_scope =
-         modes ? nir_intrinsic_execution_scope(intr) : SCOPE_SUBGROUP;
+         modes ? nir_intrinsic_execution_scope(intr)
+               : options->shader_out_scope;
       mesa_scope memory_scope =
-         modes ? nir_intrinsic_memory_scope(intr) : SCOPE_SUBGROUP;
-      if (!can_ignore_shader_out_barriers)
+         modes ? nir_intrinsic_memory_scope(intr)
+               : options->shader_out_scope;
+
+      if (!options->can_ignore_shader_out_barriers)
          modes |= nir_var_mem_global;
 
       nir_barrier(b, .execution_scope = execution_scope,
@@ -196,9 +209,11 @@ lower_tcs_impl(nir_builder *b, nir_intrinsic_instr *intr,
 static bool
 lower_tcs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 {
+   const struct poly_tcs_lower_options *options = data;
+
    b->cursor = nir_before_instr(&intr->instr);
 
-   nir_def *repl = lower_tcs_impl(b, intr, !!(uintptr_t)data);
+   nir_def *repl = lower_tcs_impl(b, intr, options);
    if (!repl)
       return false;
 
@@ -210,11 +225,34 @@ lower_tcs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 }
 
 bool
+poly_nir_lower_tcs_with_output_scope(
+   nir_shader *tcs,
+   bool can_ignore_shader_out_barriers,
+   mesa_scope shader_out_scope)
+{
+   assert(shader_out_scope == SCOPE_SUBGROUP ||
+          shader_out_scope == SCOPE_WORKGROUP);
+
+   const struct poly_tcs_lower_options options = {
+      .can_ignore_shader_out_barriers =
+         can_ignore_shader_out_barriers,
+      .shader_out_scope = shader_out_scope,
+   };
+
+   return nir_shader_intrinsics_pass(
+      tcs, lower_tcs, nir_metadata_control_flow, (void *)&options);
+}
+
+bool
 poly_nir_lower_tcs(nir_shader *tcs, bool can_ignore_shader_out_barriers)
 {
-   return nir_shader_intrinsics_pass(
-      tcs, lower_tcs, nir_metadata_control_flow,
-      (void *)(uintptr_t)can_ignore_shader_out_barriers);
+   /*
+    * Preserve the historical libpoly behaviour for existing drivers.
+    * Backends whose patches span multiple subgroups should call
+    * poly_nir_lower_tcs_with_output_scope() with SCOPE_WORKGROUP.
+    */
+   return poly_nir_lower_tcs_with_output_scope(
+      tcs, can_ignore_shader_out_barriers, SCOPE_SUBGROUP);
 }
 
 static nir_def *

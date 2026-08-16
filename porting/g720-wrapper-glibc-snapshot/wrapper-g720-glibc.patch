@@ -1,0 +1,414 @@
+diff --git a/include/android_stub/android/hardware_buffer.h b/include/android_stub/android/hardware_buffer.h
+index dcb05b5..ea3351f 100644
+--- a/include/android_stub/android/hardware_buffer.h
++++ b/include/android_stub/android/hardware_buffer.h
+@@ -1,3 +1,7 @@
++#ifndef __INTRODUCED_IN
++#define __INTRODUCED_IN(api_level)
++#endif
++
+ /*
+  * Copyright 2017 The Android Open Source Project
+  *
+diff --git a/include/android_stub/android/native_window.h b/include/android_stub/android/native_window.h
+index a3a45e3..b47773f 100644
+--- a/include/android_stub/android/native_window.h
++++ b/include/android_stub/android/native_window.h
+@@ -1,3 +1,7 @@
++#ifndef __INTRODUCED_IN
++#define __INTRODUCED_IN(api_level)
++#endif
++
+ /*
+  * Copyright (C) 2010 The Android Open Source Project
+  *
+diff --git a/include/android_stub/ndk/sync.h b/include/android_stub/ndk/sync.h
+index 38ccb68..e6f04bb 100644
+--- a/include/android_stub/ndk/sync.h
++++ b/include/android_stub/ndk/sync.h
+@@ -1,3 +1,7 @@
++#ifndef __INTRODUCED_IN
++#define __INTRODUCED_IN(api_level)
++#endif
++
+ /*
+  *  Copyright 2017 The Android Open Source Project
+  *
+diff --git a/meson.build b/meson.build
+index cab411e..0c12fcb 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1467,11 +1467,8 @@ endif
+ 
+ with_c11_threads = false
+ if cc.has_function('thrd_create', prefix: '#include <threads.h>')
+-  if with_platform_android
+-    # Current only Android's c11 <threads.h> are verified
+-    pre_args += '-DHAVE_THRD_CREATE'
+-    with_c11_threads = true
+-  endif
++  pre_args += '-DHAVE_THRD_CREATE'
++  with_c11_threads = true
+ endif
+ 
+ if cc.has_header_symbol('errno.h', 'program_invocation_name',
+diff --git a/src/android_stub/sync_stub.cpp b/src/android_stub/sync_stub.cpp
+index d76663c..12adb25 100644
+--- a/src/android_stub/sync_stub.cpp
++++ b/src/android_stub/sync_stub.cpp
+@@ -15,7 +15,7 @@ int sync_merge(const char *name, int fd, int fd2)
+ 
+ struct sync_file_info* sync_file_info(int32_t fd)
+ {
+-   return NULL;
++   return nullptr;
+ }
+ 
+ void sync_file_info_free(struct sync_file_info* info)
+diff --git a/src/util/anon_file.c b/src/util/anon_file.c
+index ddc9f1f..79d492a 100644
+--- a/src/util/anon_file.c
++++ b/src/util/anon_file.c
+@@ -124,7 +124,7 @@ os_create_anonymous_file(int64_t size, const char *debug_name)
+ #if defined(HAVE_MEMFD_CREATE)
+    if (!debug_name)
+       debug_name = "mesa-shared";
+-   fd = syscall(SYS_memfd_create, debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
++   fd = memfd_create(debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
+ #elif DETECT_OS_ANDROID
+    if (!debug_name)
+       debug_name = "mesa-shared";
+diff --git a/src/util/blob.c b/src/util/blob.c
+index 9fb30e3..fb583c9 100644
+--- a/src/util/blob.c
++++ b/src/util/blob.c
+@@ -330,7 +330,7 @@ blob_read_string(struct blob_reader *blob)
+ {
+    int size;
+    char *ret;
+-   uint8_t *nul;
++   const uint8_t *nul;
+ 
+    /* If we're already at the end, then this is an overrun. */
+    if (blob->current >= blob->end) {
+diff --git a/src/util/cnd_monotonic.c b/src/util/cnd_monotonic.c
+index 71d9ac0..b9db716 100644
+--- a/src/util/cnd_monotonic.c
++++ b/src/util/cnd_monotonic.c
+@@ -132,7 +132,7 @@ u_cnd_monotonic_timedwait(struct u_cnd_monotonic *cond, mtx_t *mtx,
+    timespec_sub_saturate(&rel_time, abs_time, &now_time);
+    int rt = pthread_cond_timedwait_relative_np(&cond->cond, mtx, &rel_time);
+ #else
+-   int rt = pthread_cond_timedwait(&cond->cond, mtx, abs_time);
++   int rt = pthread_cond_timedwait(&cond->cond, (pthread_mutex_t *)mtx, abs_time);
+ #endif
+    if (rt == ETIMEDOUT)
+       return thrd_timedout;
+@@ -151,6 +151,6 @@ u_cnd_monotonic_wait(struct u_cnd_monotonic *cond, mtx_t *mtx)
+                             (PCRITICAL_SECTION)mtx, INFINITE);
+    return thrd_success;
+ #else
+-   return (pthread_cond_wait(&cond->cond, mtx) == 0) ? thrd_success : thrd_error;
++   return (pthread_cond_wait(&cond->cond, (pthread_mutex_t *)mtx) == 0) ? thrd_success : thrd_error;
+ #endif
+ }
+diff --git a/src/util/rand_xor.c b/src/util/rand_xor.c
+index 301610c..441afa2 100644
+--- a/src/util/rand_xor.c
++++ b/src/util/rand_xor.c
+@@ -73,7 +73,7 @@ s_rand_xorshift128plus(uint64_t seed[2], bool randomised_seed)
+    size_t seed_size = sizeof(uint64_t) * 2;
+ 
+ #if defined(HAVE_GETRANDOM)
+-   ssize_t ret = syscall(SYS_getrandom, seed, seed_size, GRND_NONBLOCK);
++   ssize_t ret = getrandom(seed, seed_size, GRND_NONBLOCK);
+    if (ret == seed_size)
+       return;
+ #endif
+diff --git a/src/util/u_printf.c b/src/util/u_printf.c
+index 5422b15..7926fcf 100644
+--- a/src/util/u_printf.c
++++ b/src/util/u_printf.c
+@@ -63,7 +63,7 @@ size_t util_printf_next_spec_pos(const char *str, size_t pos)
+          continue;
+       }
+ 
+-      char *spec_pos = strpbrk(str_found, "cdieEfFgGaAosuxXp%");
++      const char *spec_pos = strpbrk(str_found, "cdieEfFgGaAosuxXp%");
+       if (spec_pos == NULL) {
+          return -1;
+       } else if (*spec_pos == '%') {
+diff --git a/src/vulkan/wrapper/artifacts.cpp b/src/vulkan/wrapper/artifacts.cpp
+index 51b0753..bbe27c1 100644
+--- a/src/vulkan/wrapper/artifacts.cpp
++++ b/src/vulkan/wrapper/artifacts.cpp
+@@ -11,6 +11,7 @@
+ #include <string>
+ #include <sstream>
+ #include <iomanip>
++#include <errno.h>
+ 
+ static FILE* open_log_file(const std::string postfix, VkFormat original_format, int w, int h, int id, const char* mode) {
+     static std::string dir;
+@@ -19,7 +20,7 @@ static FILE* open_log_file(const std::string postfix, VkFormat original_format,
+         initialized = true;
+         char time_str[20];
+         get_current_time_string(time_str, sizeof(time_str));
+-        dir = std::string("/sdcard/Documents/Wrapper/artifacts_") + time_str + "." + getprogname() + "." + std::to_string(getpid());
++        dir = std::string("/sdcard/Documents/Wrapper/artifacts_") + time_str + "." + (program_invocation_short_name ? program_invocation_short_name : "wrapper") + "." + std::to_string(getpid());
+         if (mkdir(dir.c_str(), 0777) == 0) {
+             WLOGE("Failed to create the artifacts directory %s", dir.c_str());
+         } else {
+diff --git a/src/vulkan/wrapper/spirv_edit.h b/src/vulkan/wrapper/spirv_edit.h
+index 76cf57a..7e9c0de 100644
+--- a/src/vulkan/wrapper/spirv_edit.h
++++ b/src/vulkan/wrapper/spirv_edit.h
+@@ -2,6 +2,7 @@
+ 
+ #include <stdbool.h>
+ #include <stdint.h>
++#include <stddef.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+diff --git a/src/vulkan/wrapper/wrapper_device.c b/src/vulkan/wrapper/wrapper_device.c
+index 913928a..7f84e6a 100644
+--- a/src/vulkan/wrapper/wrapper_device.c
++++ b/src/vulkan/wrapper/wrapper_device.c
+@@ -577,6 +577,10 @@ WRAPPER_DestroyDevice(VkDevice _device, const VkAllocationCallbacks* pAllocator)
+ {
+    VK_FROM_HANDLE(wrapper_device, device, _device);
+ 
++   InterceptorState_Cleanup(&device->s3tc);
++   InterceptorState_Cleanup(&device->bc6);
++   InterceptorState_Cleanup(&device->bc7);
++
+    simple_mtx_lock(&device->resource_mutex);
+ 
+    list_for_each_entry_safe(struct wrapper_command_buffer, wcb,
+@@ -843,6 +847,7 @@ static VkResult CreateConstantsUniformBuffer(
+ }
+ 
+ static VkResult InterceptorState_Init(InterceptorState* state, VkDevice device, size_t spv_size, const uint32_t* spv_code, bool use_image_view, int bc_mode) {
++   state->device = device;
+    VkResult result;
+    VK_FROM_HANDLE(wrapper_device, _device, device);
+    VkDescriptorSetLayoutBinding setLayoutBinding[3] = {
+@@ -980,6 +985,44 @@ static VkResult InterceptorState_Init(InterceptorState* state, VkDevice device,
+    return result;
+ }
+ 
++static void
++InterceptorState_Cleanup(InterceptorState* state)
++{
++   VkDevice device = state->device;
++
++   if (device == VK_NULL_HANDLE)
++      return;
++
++   if (state->pipeline != VK_NULL_HANDLE) {
++      WCHECKV(DestroyPipeline(device, state->pipeline, NULL));
++      state->pipeline = VK_NULL_HANDLE;
++   }
++
++   if (state->pipelineLayout != VK_NULL_HANDLE) {
++      WCHECKV(DestroyPipelineLayout(device, state->pipelineLayout, NULL));
++      state->pipelineLayout = VK_NULL_HANDLE;
++   }
++
++   if (state->descriptorSetLayout != VK_NULL_HANDLE) {
++      WCHECKV(DestroyDescriptorSetLayout(device,
++                                         state->descriptorSetLayout,
++                                         NULL));
++      state->descriptorSetLayout = VK_NULL_HANDLE;
++   }
++
++   if (state->constantsBuffer != VK_NULL_HANDLE) {
++      WCHECKV(DestroyBuffer(device, state->constantsBuffer, NULL));
++      state->constantsBuffer = VK_NULL_HANDLE;
++   }
++
++   if (state->constantsBufferMemory != VK_NULL_HANDLE) {
++      WCHECKV(FreeMemory(device, state->constantsBufferMemory, NULL));
++      state->constantsBufferMemory = VK_NULL_HANDLE;
++   }
++
++   state->device = VK_NULL_HANDLE;
++}
++
+ // TODO: deprecate this pass in the future
+ static VkResult CreateStagingBuffer(
+    struct wrapper_device* _device,
+diff --git a/src/vulkan/wrapper/wrapper_device_memory.c b/src/vulkan/wrapper/wrapper_device_memory.c
+index f820ba1..1943ff6 100644
+--- a/src/vulkan/wrapper/wrapper_device_memory.c
++++ b/src/vulkan/wrapper/wrapper_device_memory.c
+@@ -1,10 +1,10 @@
+ // #define native_handle_t __native_handle_t
+-// #define buffer_handle_t __buffer_handle_t
++#define buffer_handle_t __buffer_handle_t
+ #include "wrapper_private.h"
+ #include "wrapper_entrypoints.h"
+ #include "vk_common_entrypoints.h"
+ // #undef native_handle_t
+-// #undef buffer_handle_t
++#undef buffer_handle_t
+ #include "util/os_file.h"
+ #include "vk_util.h"
+ #include "vk_printers.h"
+@@ -13,6 +13,7 @@
+ #include <android/hardware_buffer.h>
+ #include <vndk/hardware_buffer.h>
+ #include <sys/mman.h>
++#include <fcntl.h>
+ #include <sys/ioctl.h>
+ #include <linux/dma-heap.h>
+ 
+diff --git a/src/vulkan/wrapper/wrapper_instance.c b/src/vulkan/wrapper/wrapper_instance.c
+index 8a18a7f..02ec90e 100644
+--- a/src/vulkan/wrapper/wrapper_instance.c
++++ b/src/vulkan/wrapper/wrapper_instance.c
+@@ -8,6 +8,7 @@
+ #include "wrapper_debug.h"
+ #include "vk_printers.h"
+ #include "graphics_env_hooks.h"
++#include <errno.h>
+ 
+ const struct vk_instance_extension_table wrapper_instance_extensions = {
+    .KHR_get_surface_capabilities2 = true,
+@@ -55,32 +56,16 @@ static struct vk_instance_extension_table *supported_instance_extensions;
+ 
+ static bool g_intercepted_layer_path = false;
+ 
+-static void *get_vulkan_handle_icd() 
++static void *get_vulkan_handle_icd()
+ {
+-   char *path = getenv("ADRENOTOOLS_DRIVER_PATH");
+-   char *name = getenv("ADRENOTOOLS_DRIVER_NAME");
+-   char *hooks = getenv("ADRENOTOOLS_HOOKS_PATH");
+-#ifdef __TERMUX__
+-   if (!hooks)
+-      asprintf(&hooks, "%s/%s", getenv("PREFIX"), "lib");
+-#endif
++   const char *path = getenv("WRAPPER_VULKAN_LIBRARY");
+ 
+-   struct stat sb;
++   if (!path || !path[0])
++      path = DEFAULT_VULKAN_PATH;
+ 
+-   if (CHECK_FLAG("USE_VVL")) {
+-      g_intercepted_layer_path = set_layer_paths();
+-   }
++   WLOG("get_vulkan_handle: direct ICD=%s", path);
+ 
+-   if (hooks && path && (stat(path, &sb) == 0)) {
+-      WLOG("get_vulkan_handle: hooks=%s, path=%s, name=%s", hooks, path, name);
+-      char *temp;
+-      asprintf(&temp, "%s%s", path, "temp");
+-      mkdir(temp, S_IRWXU | S_IRWXG);
+-      return  adrenotools_open_libvulkan(RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM, temp, hooks, path, name, NULL, NULL);
+-   } else  {
+-      WLOG("get_vulkan_handle: defaulting to %s", DEFAULT_VULKAN_PATH);
+-      return dlopen(DEFAULT_VULKAN_PATH, RTLD_NOW | RTLD_LOCAL);
+-   }
++   return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+ }
+ 
+ static void *get_vulkan_handle() 
+@@ -108,6 +93,45 @@ static bool vulkan_library_init()
+ 
+       _vkEnumerateInstanceLayerProperties =
+          dlsym(vulkan_library_handle, "vkEnumerateInstanceLayerProperties");
++
++      /*
++       * Direct-ICD path for Mesa drivers such as PanVK.
++       * Fall back to vk_icdGetInstanceProcAddr and resolve global entrypoints
++       * through the ICD dispatch function.
++       */
++      if (!dispatch_get_instance_proc_addr) {
++         dispatch_get_instance_proc_addr =
++            (PFN_vkGetInstanceProcAddr)
++            dlsym(vulkan_library_handle, "vk_icdGetInstanceProcAddr");
++      }
++
++      if (dispatch_get_instance_proc_addr) {
++         if (!dispatch_create_instance)
++            dispatch_create_instance =
++               (PFN_vkCreateInstance)
++               dispatch_get_instance_proc_addr(
++                  VK_NULL_HANDLE, "vkCreateInstance");
++
++         if (!enumerate_instance_version)
++            enumerate_instance_version =
++               (PFN_vkEnumerateInstanceVersion)
++               dispatch_get_instance_proc_addr(
++                  VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
++
++         if (!enumerate_instance_extension_properties)
++            enumerate_instance_extension_properties =
++               (PFN_vkEnumerateInstanceExtensionProperties)
++               dispatch_get_instance_proc_addr(
++                  VK_NULL_HANDLE,
++                  "vkEnumerateInstanceExtensionProperties");
++
++         if (!_vkEnumerateInstanceLayerProperties)
++            _vkEnumerateInstanceLayerProperties =
++               (PFN_vkEnumerateInstanceLayerProperties)
++               dispatch_get_instance_proc_addr(
++                  VK_NULL_HANDLE,
++                  "vkEnumerateInstanceLayerProperties");
++      }
+    }
+    else {
+       WLOGE("Failed to load vulkan handle: %s", dlerror());
+@@ -400,7 +424,7 @@ WRAPPER_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
+       wrapper_create_info.ppEnabledLayerNames = layers;
+ 
+       get_current_time_string(time_str, sizeof(time_str));
+-      sprintf(path, "/sdcard/Documents/Wrapper/%s_%s.%s.%d.txt", "vvl", time_str, getprogname(), getpid());
++      sprintf(path, "/sdcard/Documents/Wrapper/%s_%s.%s.%d.txt", "vvl", time_str, (program_invocation_short_name ? program_invocation_short_name : "wrapper"), getpid());
+       layer_settings_create_info.pNext = wrapper_create_info.pNext;
+       wrapper_create_info.pNext = &layer_settings_create_info;
+    }
+diff --git a/src/vulkan/wrapper/wrapper_log.c b/src/vulkan/wrapper/wrapper_log.c
+index fb7a1b5..d1d70fe 100644
+--- a/src/vulkan/wrapper/wrapper_log.c
++++ b/src/vulkan/wrapper/wrapper_log.c
+@@ -1,4 +1,5 @@
+ #include <time.h>
++#include <errno.h>
+ 
+ #include "wrapper_private.h"
+ #include "wrapper_log.h"
+@@ -57,7 +58,7 @@ static FILE* open_log_file(const char* prefix) {
+     char time_str[20];
+     get_current_time_string(time_str, sizeof(time_str));
+     char path[256];
+-    sprintf(path, "/sdcard/Documents/Wrapper/%s_%s.%s.%d.txt", prefix, time_str, getprogname(), getpid());
++    sprintf(path, "/sdcard/Documents/Wrapper/%s_%s.%s.%d.txt", prefix, time_str, (program_invocation_short_name ? program_invocation_short_name : "wrapper"), getpid());
+     return fopen(path, "a");
+ }
+ 
+diff --git a/src/vulkan/wrapper/wrapper_physical_device.c b/src/vulkan/wrapper/wrapper_physical_device.c
+index e136594..2a4adee 100644
+--- a/src/vulkan/wrapper/wrapper_physical_device.c
++++ b/src/vulkan/wrapper/wrapper_physical_device.c
+@@ -1,4 +1,5 @@
+ #include <math.h>
++#include <fcntl.h>
+ 
+ #include "wrapper_private.h"
+ #include "wrapper_entrypoints.h"
+diff --git a/src/vulkan/wsi/meson.build b/src/vulkan/wsi/meson.build
+index 83487f0..1155961 100644
+--- a/src/vulkan/wsi/meson.build
++++ b/src/vulkan/wsi/meson.build
+@@ -9,7 +9,7 @@ if dep_libdrm.found()
+   files_vulkan_wsi += files('wsi_common_drm.c')
+ endif
+ 
+-if with_wrapper_vk
++if with_wrapper_vk and with_platform_android
+   files_vulkan_wsi += files('wsi_common_ahardware_buffer.c')
+ endif
+ 

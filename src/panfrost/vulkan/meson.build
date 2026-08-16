@@ -217,6 +217,7 @@ libvulkan_panfrost = shared_library(
     libpanfrost_decode,
     libpanfrost_lib,
     libpanfrost_compiler,
+    libpoly_nir,
   ],
   dependencies : [
     dep_dl,

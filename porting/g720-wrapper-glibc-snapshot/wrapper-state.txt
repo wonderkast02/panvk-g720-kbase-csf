@@ -1,0 +1,32 @@
+===== WRAPPER HEAD =====
+c8baafbd4f4835ca103acb55ec3ac13642b6b7e3
+c8baafb Merge pull request #168 from leegao/debug-495
+
+===== WRAPPER BRANCH =====
+g720-glibc-wrapper
+
+===== WRAPPER REMOTES =====
+origin	https://github.com/leegao/bionic-vulkan-wrapper.git (fetch) [blob:none]
+origin	https://github.com/leegao/bionic-vulkan-wrapper.git (push)
+
+===== WRAPPER STATUS =====
+ M include/android_stub/android/hardware_buffer.h
+ M include/android_stub/android/native_window.h
+ M include/android_stub/ndk/sync.h
+ M meson.build
+ M src/android_stub/sync_stub.cpp
+ M src/util/anon_file.c
+ M src/util/blob.c
+ M src/util/cnd_monotonic.c
+ M src/util/rand_xor.c
+ M src/util/u_printf.c
+ M src/vulkan/wrapper/artifacts.cpp
+ M src/vulkan/wrapper/spirv_edit.h
+ M src/vulkan/wrapper/wrapper_device.c
+ M src/vulkan/wrapper/wrapper_device_memory.c
+ M src/vulkan/wrapper/wrapper_instance.c
+ M src/vulkan/wrapper/wrapper_log.c
+ M src/vulkan/wrapper/wrapper_physical_device.c
+ M src/vulkan/wsi/meson.build
+?? src/vulkan/wrapper/include/spirv-tools.before-g720/
+?? src/vulkan/wrapper/wrapper_instance.c.before-g720

@@ -781,8 +781,7 @@ kbase_subqueue_wait_seqno(struct panvk_gpu_queue *queue, uint32_t subqueue,
       uint32_t active = *(volatile uint32_t *)(output_page +
                                                CS_USER_IO_OUTPUT_CS_ACTIVE);
       if (prev_extract != extract || prev_seqno != cell->seqno) {
-         mesa_logi("kbase: running subqueue=%u, insert=%lu, extract=%lu, active=%u, target_insert=%lu, ls_copy=%lu, cell->seqno=%lu, target_seqno=%lu, progress=%x",
-            subqueue, insert, extract, active, target_insert, *ls_copy, cell->seqno, target_seqno, *stream_progress);
+         (void)active;
          prev_extract = extract;
          prev_seqno = cell->seqno;
       }
@@ -2659,7 +2658,6 @@ kbase_wait_sync_targets(
          return result;
    }
 
-   mesa_logi("kbase_wait_sync_targets: targets = { %lu, %lu, %lu } succeeded", targets[0], targets[1], targets[2]);
    return VK_SUCCESS;
 }
 
