@@ -283,7 +283,6 @@ Status legend:
   - Correção do CS register count para G720
   - Testes e documentação
 
-(As atribuições existentes foram preservadas conforme solicitado.)
 
 ---
 
