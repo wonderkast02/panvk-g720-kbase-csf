@@ -472,10 +472,32 @@ enum panvk_vs_variant {
    PANVK_VS_VARIANTS,
 };
 
+/*
+ * Original Vulkan tessellation metadata retained before libpoly lowers
+ * TCS to compute and TES to a hardware vertex shader.
+ *
+ * Keep this in panvk_shader rather than pan_shader_info: these values are
+ * consumed by the PanVK/libpoly runtime, not by the Panfrost backend.
+ */
+struct panvk_tess_info {
+   uint64_t tcs_per_vertex_outputs;
+
+   uint32_t tcs_output_patch_size;
+   uint32_t tcs_nr_patch_outputs;
+   uint32_t tcs_output_stride;
+
+   uint8_t mode;
+   uint8_t spacing;
+   uint8_t points;
+   uint8_t ccw;
+};
+
 struct panvk_shader {
    struct vk_shader vk;
 
    struct panvk_shader_desc_info desc_info;
+
+   struct panvk_tess_info tess;
 
    struct panvk_shader_variant variants[];
 };

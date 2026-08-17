@@ -137,12 +137,16 @@ struct panvk_rendering_state {
 enum panvk_cmd_graphics_dirty_state {
    PANVK_CMD_GRAPHICS_DIRTY_BASE_INSTANCE,
    PANVK_CMD_GRAPHICS_DIRTY_VS,
+   PANVK_CMD_GRAPHICS_DIRTY_TCS,
+   PANVK_CMD_GRAPHICS_DIRTY_TES,
    PANVK_CMD_GRAPHICS_DIRTY_FS,
    PANVK_CMD_GRAPHICS_DIRTY_VB,
    PANVK_CMD_GRAPHICS_DIRTY_OQ,
    PANVK_CMD_GRAPHICS_DIRTY_DESC_STATE,
    PANVK_CMD_GRAPHICS_DIRTY_RENDER_STATE,
    PANVK_CMD_GRAPHICS_DIRTY_VS_PUSH_UNIFORMS,
+   PANVK_CMD_GRAPHICS_DIRTY_TCS_PUSH_UNIFORMS,
+   PANVK_CMD_GRAPHICS_DIRTY_TES_PUSH_UNIFORMS,
    PANVK_CMD_GRAPHICS_DIRTY_FS_PUSH_UNIFORMS,
    PANVK_CMD_GRAPHICS_DIRTY_IDVS,
    PANVK_CMD_GRAPHICS_DIRTY_STATE_COUNT,
@@ -212,6 +216,20 @@ struct panvk_cmd_graphics_state {
       uint32_t desc_repeat_count;
 #endif
    } vs;
+
+   struct {
+      struct {
+         const struct panvk_shader *shader;
+         struct panvk_shader_desc_state desc;
+         uint64_t push_uniforms;
+      } tcs;
+
+      struct {
+         const struct panvk_shader *shader;
+         struct panvk_shader_desc_state desc;
+         uint64_t push_uniforms;
+      } tes;
+   } tess;
 
    struct {
       struct panvk_attrib_buf bufs[MAX_VBS];

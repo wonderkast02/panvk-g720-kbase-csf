@@ -495,6 +495,171 @@ emit_varying_descs(const struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
+
+/*
+ * Tessellation control is compiled as a physical COMPUTE shader, so its
+ * driver set follows the compute descriptor ABI:
+ *
+ *   0                 dummy sampler
+ *   1..N              dynamic buffers
+ *
+ * Unlike ordinary compute, the descriptor state still belongs to the
+ * graphics bind point.
+ */
+static VkResult
+prepare_tcs_driver_set(struct panvk_cmd_buffer *cmdbuf)
+{
+   const struct panvk_shader *tcs = cmdbuf->state.gfx.tess.tcs.shader;
+   const struct panvk_shader_desc_info *desc_info = &tcs->desc_info;
+   const struct panvk_descriptor_state *desc_state =
+      &cmdbuf->state.gfx.desc_state;
+   struct panvk_shader_desc_state *shader_desc_state =
+      &cmdbuf->state.gfx.tess.tcs.desc;
+
+   const uint32_t desc_count = desc_info->dyn_bufs.count + 1;
+   struct pan_ptr driver_set =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc,
+                              desc_count * PANVK_DESCRIPTOR_SIZE,
+                              PANVK_DESCRIPTOR_SIZE);
+   struct panvk_opaque_desc *descs = driver_set.cpu;
+
+   if (!driver_set.gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   /* Same ABI as a physical compute shader. */
+   pan_cast_and_pack(&descs[0], SAMPLER, cfg) {
+      cfg.clamp_integer_array_indices = false;
+   }
+
+   panvk_per_arch(cmd_fill_dyn_bufs)(
+      desc_state, desc_info,
+      (struct mali_buffer_packed *)&descs[1]);
+
+   shader_desc_state->driver_set.dev_addr = driver_set.gpu;
+   shader_desc_state->driver_set.size =
+      desc_count * PANVK_DESCRIPTOR_SIZE;
+
+   return VK_SUCCESS;
+}
+
+/*
+ * Tessellation evaluation is compiled as a physical VERTEX shader.
+ *
+ * Descriptor lowering therefore expects the vertex-stage driver-set ABI.
+ * TES does not consume application vertex attributes, but the reserved
+ * attribute slots must still exist so dynamic-buffer descriptor indices
+ * remain identical to those used by the lowered shader.
+ */
+static VkResult
+prepare_tes_driver_set(struct panvk_cmd_buffer *cmdbuf)
+{
+   const struct panvk_shader *tes = cmdbuf->state.gfx.tess.tes.shader;
+   const struct panvk_shader_desc_info *desc_info = &tes->desc_info;
+   const struct panvk_descriptor_state *desc_state =
+      &cmdbuf->state.gfx.desc_state;
+   struct panvk_shader_desc_state *shader_desc_state =
+      &cmdbuf->state.gfx.tess.tes.desc;
+
+   const uint32_t sampler_idx = MAX_VS_ATTRIBS;
+   const uint32_t desc_count =
+      MAX_VS_ATTRIBS + 1 + desc_info->dyn_bufs.count;
+
+   struct pan_ptr driver_set =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc,
+                              desc_count * PANVK_DESCRIPTOR_SIZE,
+                              PANVK_DESCRIPTOR_SIZE);
+   struct panvk_opaque_desc *descs = driver_set.cpu;
+
+   if (!driver_set.gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   /*
+    * Preserve the physical VERTEX ABI without exposing the application's
+    * vertex buffers to TES. libpoly supplies TES input through its own
+    * buffers/sysvals.
+    */
+   for (uint32_t i = 0; i < MAX_VS_ATTRIBS; i++) {
+      pan_cast_and_pack(&descs[i], NULL_DESCRIPTOR, cfg)
+         ;
+   }
+
+   pan_cast_and_pack(&descs[sampler_idx], SAMPLER, cfg) {
+      cfg.clamp_integer_array_indices = false;
+   }
+
+   panvk_per_arch(cmd_fill_dyn_bufs)(
+      desc_state, desc_info,
+      (struct mali_buffer_packed *)&descs[sampler_idx + 1]);
+
+   shader_desc_state->driver_set.dev_addr = driver_set.gpu;
+   shader_desc_state->driver_set.size =
+      desc_count * PANVK_DESCRIPTOR_SIZE;
+
+   return VK_SUCCESS;
+}
+
+static bool
+tcs_desc_dirty(struct panvk_cmd_buffer *cmdbuf)
+{
+   return gfx_state_dirty(cmdbuf, TCS) ||
+          gfx_state_dirty(cmdbuf, DESC_STATE);
+}
+
+static bool
+tes_desc_dirty(struct panvk_cmd_buffer *cmdbuf)
+{
+   return gfx_state_dirty(cmdbuf, TES) ||
+          gfx_state_dirty(cmdbuf, DESC_STATE);
+}
+
+static VkResult
+prepare_tcs_desc(struct panvk_cmd_buffer *cmdbuf)
+{
+   if (!tcs_desc_dirty(cmdbuf))
+      return VK_SUCCESS;
+
+   const struct panvk_shader *tcs = cmdbuf->state.gfx.tess.tcs.shader;
+   struct panvk_shader_desc_state *desc =
+      &cmdbuf->state.gfx.tess.tcs.desc;
+
+   if (!tcs) {
+      memset(desc, 0, sizeof(*desc));
+      return VK_SUCCESS;
+   }
+
+   VkResult result = prepare_tcs_driver_set(cmdbuf);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return panvk_per_arch(cmd_prepare_shader_res_table)(
+      cmdbuf, &cmdbuf->state.gfx.desc_state,
+      &tcs->desc_info, desc, 1);
+}
+
+static VkResult
+prepare_tes_desc(struct panvk_cmd_buffer *cmdbuf)
+{
+   if (!tes_desc_dirty(cmdbuf))
+      return VK_SUCCESS;
+
+   const struct panvk_shader *tes = cmdbuf->state.gfx.tess.tes.shader;
+   struct panvk_shader_desc_state *desc =
+      &cmdbuf->state.gfx.tess.tes.desc;
+
+   if (!tes) {
+      memset(desc, 0, sizeof(*desc));
+      return VK_SUCCESS;
+   }
+
+   VkResult result = prepare_tes_driver_set(cmdbuf);
+   if (result != VK_SUCCESS)
+      return result;
+
+   return panvk_per_arch(cmd_prepare_shader_res_table)(
+      cmdbuf, &cmdbuf->state.gfx.desc_state,
+      &tes->desc_info, desc, 1);
+}
+
 static VkResult
 prepare_fs_driver_set(struct panvk_cmd_buffer *cmdbuf)
 {
@@ -576,24 +741,48 @@ prepare_descs(struct panvk_cmd_buffer *cmdbuf,
               const struct panvk_draw_info *draw)
 {
    const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
+   const struct panvk_shader *tcs = cmdbuf->state.gfx.tess.tcs.shader;
+   const struct panvk_shader *tes = cmdbuf->state.gfx.tess.tes.shader;
    const struct panvk_shader *fs = get_fs(cmdbuf);
    struct panvk_descriptor_state *desc_state =
       &cmdbuf->state.gfx.desc_state;
    VkResult result;
 
+   /*
+    * All logical graphics stages share the graphics descriptor bind point,
+    * including TCS even though its physical binary executes as COMPUTE.
+    */
    if (gfx_state_dirty(cmdbuf, DESC_STATE) ||
        gfx_state_dirty(cmdbuf, VS) ||
+       gfx_state_dirty(cmdbuf, TCS) ||
+       gfx_state_dirty(cmdbuf, TES) ||
        fs_user_dirty(cmdbuf)) {
       uint32_t used_set_mask = vs->desc_info.used_set_mask;
-      used_set_mask |= fs ? fs->desc_info.used_set_mask : 0;
 
-      result = panvk_per_arch(cmd_prepare_push_descs)(cmdbuf, desc_state,
-                                                      used_set_mask);
+      if (tcs)
+         used_set_mask |= tcs->desc_info.used_set_mask;
+
+      if (tes)
+         used_set_mask |= tes->desc_info.used_set_mask;
+
+      if (fs)
+         used_set_mask |= fs->desc_info.used_set_mask;
+
+      result = panvk_per_arch(cmd_prepare_push_descs)(
+         cmdbuf, desc_state, used_set_mask);
       if (result != VK_SUCCESS)
          return result;
    }
 
    result = prepare_vs_desc(cmdbuf, draw);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = prepare_tcs_desc(cmdbuf);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = prepare_tes_desc(cmdbuf);
    if (result != VK_SUCCESS)
       return result;
 
