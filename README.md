@@ -2,6 +2,8 @@
 
 Projeto experimental para adaptar o Mesa/PanVK à Arm Mali-G720 utilizando diretamente a interface Kbase/CSF presente em kernels Android.
 
+O caminho principal atual é nativo: PanVK fala diretamente com Kbase/CSF. Wrappers, Wine, Box64 e DXVK continuam documentados como provas de conceito e ferramentas de validação, mas não fazem parte da arquitetura interna do driver.
+
 > ⚠️ Projeto experimental e ainda em desenvolvimento. Risco real de GPU faults, travamentos ou necessidade de reinicialização durante testes.
 
 ---
@@ -219,33 +221,135 @@ Progresso e problemas corrigidos (Bionic → glibc):
 - ✅ getprogname → program_invocation_short_name
 - ✅ size_t em spirv_edit.h
 
-Estado atual:
-- A compilação chegou ao link final de `libvulkan_wrapper.so`.
-- O link está atualmente bloqueado porque `spirv_edit.cpp` referencia passes customizados do SPIRV-Tools que não existem no archive compilado:
-  - CreateRemoveClipCullDistPass()
-  - CreateFixMaliSpecConstantCompositePass()
-  - CreateMaliOptimizationBarrierPass()
+Estado histórico:
+- O snapshot preservado em `porting/g720-wrapper-glibc-snapshot/` representa um checkpoint intermediário do port Bionic → glibc.
+- Nesse checkpoint, a compilação havia chegado ao link final de `libvulkan_wrapper.so`, ainda bloqueado por passes customizados ausentes no SPIRV-Tools.
+- O trabalho com o wrapper foi usado como PoC para estudar o caminho Vulkan e comparar features virtualizadas.
+- O caminho principal atual não depende mais desse wrapper: PanVK executa diretamente sobre Kbase/CSF.
 
-Consequência:
-- O Wrapper glibc permanece WIP.
-- NÃO afirmar que Wrapper → PanVK já foi validado.
-- NÃO afirmar que DXVK stock já funciona através deste Wrapper.
+O snapshot permanece no repositório para preservar o histórico da investigação, não como arquitetura recomendada atualmente.
+
+---
+
+## 🧪 PoCs / marcos históricos preservados
+
+As provas de conceito abaixo registram etapas diferentes do desenvolvimento. Elas não significam conformidade Vulkan nem compatibilidade geral com jogos.
+
+1. **Kbase/CSF bring-up**
+   - comunicação com `/dev/mali0`
+   - UAPI e propriedades da GPU
+   - memória e BOs
+   - CSG, filas CSF e execução real na GPU
+
+2. **PanVK Vulkan nativo**
+   - vulkaninfo
+   - compute
+   - graphics pipeline
+   - triângulo offscreen + readback
+   - texture sampling
+   - depth/stencil
+   - blending
+   - MSAA + resolve
+   - stress
+
+3. **Termux:X11 / WSI**
+   - swapchain Vulkan ARM64
+   - vkcube
+   - teste prolongado de aproximadamente 300 frames
+
+4. **Box64 / Wine Vulkan**
+   - execução x86_64
+   - Wine amd64/WOW64
+   - aplicação Windows chegando ao PanVK por Wine/Box64
+
+5. **DXVK G720 LAB**
+   - criação experimental de dispositivo D3D11
+   - clear/draw
+   - copy/map/readback
+   - DXBC → SPIR-V
+   - Draw(3)
+   - PresentImmediate
+
+6. **Wrapper Bionic → glibc**
+   - PoC histórica para estudar a rota indireta:
+     `wrapper → PanVK → Kbase/CSF → G720`
+   - checkpoint preservado em `porting/g720-wrapper-glibc-snapshot/`
+
+7. **Transição para PanVK nativo**
+   - remoção do wrapper do caminho principal
+   - caminho atual:
+     `Vulkan → PanVK → Kbase/CSF → Mali-G720`
+
+8. **Tessellation compiler bring-up**
+   - VS → COMPUTE
+   - TCS → COMPUTE
+   - TES → VERTEX
+   - metadata, binding/state, descriptors e poly sysvals
+
+9. **Tessellation precompiled kernels**
+   - `panlib_prefix_sum_tess`
+   - `panlib_tess_isoline`
+   - `panlib_tess_tri`
+   - `panlib_tess_quad`
+
+---
+
+## 🧬 Tessellation (desenvolvimento atual)
+
+`tessellationShader` continua **desativado** enquanto o runtime não estiver completo e validado.
+
+Parte concluída:
+- ✅ VS → COMPUTE
+- ✅ TCS → COMPUTE
+- ✅ TES → VERTEX
+- ✅ metadata TCS/TES
+- ✅ binding/state TCS/TES
+- ✅ descriptors TCS/TES
+- ✅ poly sysvals ABI
+- ✅ auditoria do ABI libpoly
+- ✅ correção Physical64 `ptr_size`
+- ✅ kernels precompilados de tessellation no libpan
+- ✅ kernels de tessellation limitados às arquiteturas CSF v10/v12/v13/v14
+
+Arquiteturas legadas v4/v5/v6/v7/v9 continuam usando o conjunto normal de shaders libpan sem esses kernels de tessellation.
+
+Commits relacionados:
+- `8edb5d94746` — preserve pointer size for precompiled compute variants
+- `2aef87163bf` — add poly tessellation precompiled kernels
+- `65aeaf80726` — scope tessellation kernels to CSF architectures
+
+Runtime ainda em desenvolvimento:
+- 🚧 poly heap
+- 🚧 buffers por draw
+- 🚧 `poly_vertex_params`
+- 🚧 `poly_tess_params`
+- 🚧 `gfx.sysvals.poly`
+- 🚧 software VS dispatch
+- 🚧 TCS dispatch
+- 🚧 COUNT
+- 🚧 prefix sum
+- 🚧 WITH_COUNTS
+- 🚧 draw TES indexed indirect final
+- 🚧 validação runtime
+
+`tessellationShader=true` só será anunciado depois da implementação completa e validação em hardware real.
 
 ---
 
 ## 🛠️ Próximos passos (priorizados)
 
-Removidos itens já concluídos das listas antigas. Prioridade atual:
-1. Resolver/prover os passes SPIRV-Tools específicos usados pelo bionic-vulkan-wrapper. (🚧)
-2. Finalizar o link glibc de `libvulkan_wrapper.so`. (🚧)
-3. Testar carregamento direto: `libvulkan_wrapper.so -> libvulkan_panfrost.so`. (🚧)
-4. Enumerar a Mali-G720 através do Wrapper e auditar comportamento. (🧪)
-5. Auditar as features Vulkan virtualizadas pelo Wrapper (o que é emulação vs. hardware). (🧪)
-6. Testar DXVK stock sem o G720 LAB bypass (avaliar rejeições de features). (🚧)
-7. Repetir D3D11 offscreen e swapchain com abordagem limpa. (🧪)
-8. Somente depois de estabilizar, testar jogos reais com controle experimental. (🚧)
-9. Investigar adequadamente geometryShader e multiViewport (evitar apenas alterar feature bits). (🚧)
-10. Avaliar integração sustentável de emulação BCn / Clip / Cull (se necessário). (🚧)
+A prioridade atual está no caminho PanVK nativo:
+
+1. Fechar o runtime do `poly_heap` para tessellation. (🚧)
+2. Preparar `poly_vertex_params` e `poly_tess_params`. (🚧)
+3. Integrar os buffers e `gfx.sysvals.poly`. (🚧)
+4. Disparar software VS e TCS na ordem correta. (🚧)
+5. Integrar COUNT → prefix sum → WITH_COUNTS. (🚧)
+6. Produzir e consumir o draw indexed indirect final do TES. (🚧)
+7. Validar tessellation em hardware real antes de anunciar a feature. (🚧)
+8. Depois disso, continuar a investigação de `geometryShader` e `multiViewport`. (🧪)
+9. Manter `textureCompressionBC` desativado sem implementação real. (🚧)
+10. Revalidar DXVK/VKD3D sobre uma base PanVK estável. (🧪)
 
 Status legend:
 - ✅ validado
