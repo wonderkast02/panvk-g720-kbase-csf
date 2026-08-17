@@ -360,6 +360,8 @@ main(int argc, const char **argv)
             libfunc, MESA_SHADER_COMPUTE, v, get_compiler_options(target_arch),
             &opt, load_kernel_input);
 
+         s->info.cs.ptr_size = nir->info.cs.ptr_size;
+
          blake3_hasher blake3_ctx;
          _mesa_blake3_init(&blake3_ctx);
          _mesa_blake3_update(&blake3_ctx, &nir->info.source_blake3,

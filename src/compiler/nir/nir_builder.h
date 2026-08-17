@@ -1720,6 +1720,11 @@ nir_get_ptr_bitsize(nir_shader *shader)
 {
    if (shader->info.stage == MESA_SHADER_KERNEL)
       return shader->info.cs.ptr_size;
+
+   if (shader->info.stage == MESA_SHADER_COMPUTE &&
+       shader->info.cs.ptr_size)
+      return shader->info.cs.ptr_size;
+
    return 32;
 }
 
