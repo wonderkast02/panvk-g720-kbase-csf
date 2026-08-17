@@ -150,6 +150,10 @@ Precompiled kernels added:
 The mesa_clc -> SPIR-V -> panfrost_compile pipeline successfully generates
 the v10 kernels for these precompiled tessellation entry points.
 
+The tessellation precompiled kernels are scoped to the CSF architectures
+(v10/v12/v13/v14). Legacy v4/v5/v6/v7/v9 builds keep the existing libpan
+shader set and do not compile these CSF tessellation kernels.
+
 Runtime work in progress
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
