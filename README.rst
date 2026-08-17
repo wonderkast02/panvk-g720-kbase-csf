@@ -134,6 +134,7 @@ Completed
 - libpoly ABI audit
 - Physical64 ptr_size fix
 - libpan precompiled tessellation kernels
+- per-command-buffer poly heap infrastructure
 
 Relevant commits:
 
@@ -159,9 +160,13 @@ Runtime work in progress
 
 - ``tessellationShader = false`` (will remain false until runtime path is complete)
 
+The poly heap infrastructure is now implemented with per-command-buffer
+ownership and grow-on-fault backing memory. Concurrent execution of the same
+tessellation command buffer remains a final-runtime requirement before the
+feature can be advertised.
+
 Runtime work still required:
 
-- poly heap
 - per-draw buffers
 - poly_vertex_params
 - poly_tess_params

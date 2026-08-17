@@ -831,6 +831,9 @@ panvk_reset_cmdbuf(struct vk_command_buffer *vk_cmdbuf,
 
    vk_command_buffer_reset(&cmdbuf->vk);
 
+   panvk_priv_bo_unref(cmdbuf->poly_heap.bo);
+   memset(&cmdbuf->poly_heap, 0, sizeof(cmdbuf->poly_heap));
+
    panvk_pool_reset(&cmdbuf->cs_pool);
    panvk_pool_reset(&cmdbuf->desc_pool);
    panvk_pool_reset(&cmdbuf->tls_pool);
@@ -864,6 +867,8 @@ panvk_destroy_cmdbuf(struct vk_command_buffer *vk_cmdbuf)
 
    for (uint32_t i = 0; i < ARRAY_SIZE(cmdbuf->state.cs); i++)
       cs_builder_fini(&cmdbuf->state.cs[i].builder);
+
+   panvk_priv_bo_unref(cmdbuf->poly_heap.bo);
 
    panvk_pool_cleanup(&cmdbuf->cs_pool);
    panvk_pool_cleanup(&cmdbuf->desc_pool);

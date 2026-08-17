@@ -543,6 +543,12 @@ struct panvk_cmd_buffer {
    struct panvk_pool cs_pool;
    struct panvk_pool desc_pool;
    struct panvk_pool tls_pool;
+
+   struct {
+      struct panvk_priv_bo *bo;
+      struct pan_ptr header;
+   } poly_heap;
+
    struct list_head push_sets;
 
    struct {

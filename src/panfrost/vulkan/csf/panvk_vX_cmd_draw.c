@@ -496,6 +496,61 @@ emit_varying_descs(const struct panvk_cmd_buffer *cmdbuf,
 }
 
 
+#define PANVK_POLY_HEAP_SIZE (128ull * 1024 * 1024)
+
+static VkResult
+prepare_poly_heap(struct panvk_cmd_buffer *cmdbuf)
+{
+   if (cmdbuf->poly_heap.bo)
+      return VK_SUCCESS;
+
+   struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+
+   VkResult result = panvk_priv_bo_create(
+      dev, PANVK_POLY_HEAP_SIZE,
+      panvk_device_adjust_bo_flags(
+         dev, PAN_KMOD_BO_FLAG_NO_MMAP | PAN_KMOD_BO_FLAG_ALLOC_ON_FAULT),
+      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &cmdbuf->poly_heap.bo);
+   if (result != VK_SUCCESS)
+      return result;
+
+   struct pan_ptr header =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc, sizeof(struct poly_heap), 16);
+   if (!header.gpu) {
+      panvk_priv_bo_unref(cmdbuf->poly_heap.bo);
+      cmdbuf->poly_heap.bo = NULL;
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+   }
+
+   *(struct poly_heap *)header.cpu = (struct poly_heap){
+      .base = cmdbuf->poly_heap.bo->addr.dev,
+      .bottom = 0,
+      .size = PANVK_POLY_HEAP_SIZE,
+   };
+
+   cmdbuf->poly_heap.header = header;
+
+   /*
+    * The command buffer may be submitted again without being re-recorded.
+    * Reset the bump allocator on the GPU before its first tessellation use
+    * in each execution.
+    *
+    * Simultaneous execution of the same tessellation command buffer still
+    * needs separate heap handling before tessellationShader can be exposed.
+    */
+   struct cs_builder *b =
+      panvk_get_cs_builder(cmdbuf, PANVK_SUBQUEUE_COMPUTE);
+   struct cs_index heap_addr = cs_scratch_reg64(b, 0);
+   struct cs_index zero = cs_scratch_reg32(b, 2);
+
+   cs_move64_to(b, heap_addr, header.gpu);
+   cs_move32_to(b, zero, 0);
+   cs_store32(b, zero, heap_addr, offsetof(struct poly_heap, bottom));
+   cs_flush_stores(b);
+
+   return VK_SUCCESS;
+}
+
 /*
  * Tessellation control is compiled as a physical COMPUTE shader, so its
  * driver set follows the compute descriptor ABI:
@@ -3436,6 +3491,12 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info draw)
    if (draw.indirect.buffer_dev_addr) {
       gfx_state_set_dirty(cmdbuf, BASE_INSTANCE);
       gfx_state_set_dirty(cmdbuf, VS_PUSH_UNIFORMS);
+   }
+
+   if (cmdbuf->state.gfx.tess.tes.shader) {
+      result = prepare_poly_heap(cmdbuf);
+      if (result != VK_SUCCESS)
+         return;
    }
 
    result = prepare_descs(cmdbuf, &draw);
