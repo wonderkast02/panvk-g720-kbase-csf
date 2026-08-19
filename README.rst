@@ -121,8 +121,13 @@ previous fixed assumption.
 Tessellation
 ------------
 
-Completed
-^^^^^^^^^
+Compiler and runtime groundwork (build-validated)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The current ``ci`` branch contains the compiler plumbing and the first direct
+runtime stages required for libpoly tessellation on CSF PanVK.
+
+Completed groundwork:
 
 - VS -> COMPUTE
 - TCS -> COMPUTE
@@ -134,53 +139,59 @@ Completed
 - libpoly ABI audit
 - Physical64 ptr_size fix
 - libpan precompiled tessellation kernels
-- per-command-buffer poly heap infrastructure
+- CSF-only tessellation kernel scope for v10/v12/v13/v14
+- per-command-buffer poly heap
+- per-draw VS/TCS/tessellation storage
+- ``poly_vertex_params`` allocation/setup
+- ``poly_tess_params`` allocation/setup
+- original software-VS output-mask preservation
+- ``gfx.sysvals.poly`` parameter-buffer wiring
+- TLS accounting for the physical TCS and TES stages
+- direct tessellation draws diverted from the normal IDVS path
+- software VS dispatched through the existing PanVK compute machinery
+- CSF WAIT dependency between software VS and TCS
+- TCS dispatched through the existing PanVK compute machinery
 
-Relevant commits:
+Relevant checkpoints include:
 
-- 8edb5d94746
-- 2aef87163bf
+- ``8edb5d94746`` — preserve pointer size for precompiled compute variants
+- ``2aef87163bf`` — add poly tessellation precompiled kernels
+- ``65aeaf80726`` — scope tessellation kernels to CSF architectures
+- ``85b972dd387`` — add per-command-buffer poly heap
+- ``0a742fa22ec`` — stage direct tessellation VS and TCS
 
-Precompiled kernels added:
+Precompiled kernels available:
 
-- panlib_prefix_sum_tess
-- panlib_tess_isoline
-- panlib_tess_tri
-- panlib_tess_quad
+- ``panlib_prefix_sum_tess``
+- ``panlib_tess_isoline``
+- ``panlib_tess_tri``
+- ``panlib_tess_quad``
 
-The mesa_clc -> SPIR-V -> panfrost_compile pipeline successfully generates
-the v10 kernels for these precompiled tessellation entry points.
+The mesa_clc -> SPIR-V -> panfrost_compile pipeline generates these
+precompiled tessellation kernels for the CSF architectures
+(v10/v12/v13/v14). Legacy v4/v5/v6/v7/v9 builds retain the normal libpan
+shader set without the CSF tessellation kernels.
 
-The tessellation precompiled kernels are scoped to the CSF architectures
-(v10/v12/v13/v14). Legacy v4/v5/v6/v7/v9 builds keep the existing libpan
-shader set and do not compile these CSF tessellation kernels.
+Runtime work still required
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Runtime work in progress
-^^^^^^^^^^^^^^^^^^^^^^^^
+``tessellationShader`` remains ``false``. The feature must not be advertised
+until the entire runtime path is implemented and validated on hardware.
 
-- ``tessellationShader = false`` (will remain false until runtime path is complete)
+Remaining work includes:
 
-The poly heap infrastructure is now implemented with per-command-buffer
-ownership and grow-on-fault backing memory. Concurrent execution of the same
-tessellation command buffer remains a final-runtime requirement before the
-feature can be advertised.
+- launch the tessellator/count processing path
+- prefix-sum processing and final index-buffer allocation
+- launch the topology-specific libpoly tessellator kernel
+- execute TES and consume the generated indexed draw
+- validate the complete direct-draw path on Mali-G720 hardware
+- implement/validate indirect tessellation draws
+- make simultaneous execution of the same tessellation command buffer safe
+- run focused regression and Vulkan feature validation before advertising it
 
-Runtime work still required:
-
-- per-draw buffers
-- poly_vertex_params
-- poly_tess_params
-- gfx.sysvals.poly
-- software VS dispatch
-- TCS dispatch
-- COUNT
-- prefix sum
-- WITH_COUNTS
-- final TES indexed indirect draw
-- runtime validation
-
-Tessellation will only be enabled (``tessellationShader = true``) after the
-complete runtime path has been implemented and validated.
+The current checkpoint therefore proves compiler integration, resource
+preparation and the SW-VS -> WAIT -> TCS runtime sequence at build level; it
+does not yet claim functional tessellation rendering.
 
 Unsupported / deferred features (current state)
 -----------------------------------------------
@@ -228,35 +239,6 @@ Development policy
 
 Vulkan feature bits are only advertised after implementation and runtime
 validation.
-
-.. G720_TESS_RUNTIME_CHECKPOINT_BEGIN
-
-Direct tessellation runtime checkpoint
---------------------------------------
-
-The ``ci`` branch now contains build-validated direct-draw runtime
-groundwork for libpoly tessellation on the CSF PanVK path.
-
-Current infrastructure includes:
-
-* per-draw ``poly_vertex_params`` and ``poly_tess_params`` allocation;
-* per-draw VS output, TCS output, coordinate-allocation, count and
-  indirect-draw storage;
-* preservation of the original software-VS output mask before
-  VS-to-compute lowering;
-* poly parameter-buffer addresses wired through the shared graphics/compute
-  sysval layout;
-* TLS accounting extended to the physical TCS and TES shaders;
-* direct tessellation draws diverted away from the normal IDVS path;
-* software VS and TCS dispatched through the existing PanVK compute
-  machinery, with a CSF wait between the producer and consumer stages.
-
-This is runtime infrastructure only. ``tessellationShader`` remains
-disabled. Tessellator kernel execution, the final TES/indexed draw,
-indirect tessellation, runtime validation, and safe simultaneous execution
-of the same tessellation command buffer are still pending.
-
-.. G720_TESS_RUNTIME_CHECKPOINT_END
 
 Upstream Mesa
 -------------

@@ -21,6 +21,25 @@ the extracted directory, and run `. ./env.sh` from Bash.
   backend at 1920x1080.
 - Mali-G925 (reported as G725 by the tested platform): `vulkaninfo`, `vkmark`,
   and X11 presentation.
+- Mali-G720 MC8 in MediaTek MT6899: `vulkaninfo`, compute, graphics,
+  offscreen triangle/readback, texture sampling, D32, D24S8, blending,
+  MSAA resolve, stress testing, Termux:X11 swapchain, a 300-frame run,
+  and `vkcube`.
+
+## Mali-G720 development status
+
+The G720 development branch uses PanVK directly over the proprietary kbase/CSF
+interface. The current native path does not require a Vulkan wrapper.
+
+Tessellation compiler plumbing and direct-draw runtime groundwork are under
+active development. Build-validated work currently reaches the physical
+software-VS compute dispatch, a CSF wait dependency, and the TCS compute
+dispatch, with per-command-buffer poly heap and per-draw libpoly parameter
+storage already wired.
+
+`tessellationShader` remains disabled. Tessellator execution, TES/final indexed
+draw execution, hardware runtime validation, indirect tessellation, and safe
+simultaneous execution of the same tessellation command buffer remain pending.
 
 ## Basic usage
 
