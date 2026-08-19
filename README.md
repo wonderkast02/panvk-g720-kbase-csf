@@ -292,13 +292,28 @@ As provas de conceito abaixo registram etapas diferentes do desenvolvimento. Ela
    - `panlib_tess_tri`
    - `panlib_tess_quad`
 
+10. **Tessellation direct-runtime groundwork**
+   - poly heap por command buffer
+   - buffers e parâmetros libpoly por draw
+   - `poly_vertex_params` / `poly_tess_params`
+   - `gfx.sysvals.poly`
+   - TLS incluindo TCS/TES físicos
+   - software VS executado como compute
+   - dependência CSF WAIT
+   - TCS executado como compute
+   - checkpoint de código: `0a742fa22ec`
+
 ---
 
 ## 🧬 Tessellation (desenvolvimento atual)
 
-`tessellationShader` continua **desativado** enquanto o runtime não estiver completo e validado.
+`tessellationShader` continua **desativado**. A implementação atual ainda não
+representa tessellation funcional completa e a feature não será anunciada antes
+de validação real em hardware.
 
-Parte concluída:
+### ✅ Infraestrutura concluída / validada por build
+
+Compiler e ABI:
 - ✅ VS → COMPUTE
 - ✅ TCS → COMPUTE
 - ✅ TES → VERTEX
@@ -308,52 +323,84 @@ Parte concluída:
 - ✅ poly sysvals ABI
 - ✅ auditoria do ABI libpoly
 - ✅ correção Physical64 `ptr_size`
-- ✅ kernels precompilados de tessellation no libpan
-- ✅ kernels de tessellation limitados às arquiteturas CSF v10/v12/v13/v14
 
-Arquiteturas legadas v4/v5/v6/v7/v9 continuam usando o conjunto normal de shaders libpan sem esses kernels de tessellation.
+Kernels:
+- ✅ `panlib_prefix_sum_tess`
+- ✅ `panlib_tess_isoline`
+- ✅ `panlib_tess_tri`
+- ✅ `panlib_tess_quad`
+- ✅ kernels limitados às arquiteturas CSF v10/v12/v13/v14
 
-Commits relacionados:
-- `8edb5d94746` — preserve pointer size for precompiled compute variants
-- `2aef87163bf` — add poly tessellation precompiled kernels
-- `65aeaf80726` — scope tessellation kernels to CSF architectures
+Runtime direto já integrado em código:
+- ✅ poly heap por command buffer
+- ✅ buffers por draw para VS/TCS/tessellation
+- ✅ `poly_vertex_params`
+- ✅ `poly_tess_params`
+- ✅ preservação da máscara original de outputs do software VS
+- ✅ `gfx.sysvals.poly`
+- ✅ TLS considerando TCS e TES físicos
+- ✅ desvio do caminho tessellation antes do IDVS normal
+- ✅ software VS disparado pelo mecanismo compute existente do PanVK
+- ✅ CSF WAIT entre software VS e TCS
+- ✅ TCS disparado pelo mecanismo compute existente do PanVK
 
-Runtime ainda em desenvolvimento:
-- 🚧 poly heap
-- 🚧 buffers por draw
-- 🚧 `poly_vertex_params`
-- 🚧 `poly_tess_params`
-- 🚧 `gfx.sysvals.poly`
-- 🚧 software VS dispatch
-- 🚧 TCS dispatch
-- 🚧 COUNT
-- 🚧 prefix sum
-- 🚧 WITH_COUNTS
-- 🚧 draw TES indexed indirect final
-- 🚧 validação runtime
+Checkpoint atual:
+- `85b972dd387` — per-command-buffer poly heap
+- `0a742fa22ec` — direct tessellation SW VS → WAIT → TCS
 
-`tessellationShader=true` só será anunciado depois da implementação completa e validação em hardware real.
+As arquiteturas legadas v4/v5/v6/v7/v9 continuam usando o conjunto normal de
+shaders libpan sem os kernels CSF de tessellation.
+
+### 🚧 Runtime ainda pendente
+
+- lançar o processamento do tessellator / contagem
+- executar prefix sum e alocar/preencher o index buffer final
+- disparar o kernel libpoly correspondente à topologia
+- executar TES e consumir o indexed draw gerado
+- validar o caminho direct completo na Mali-G720
+- implementar/validar tessellation indirect
+- garantir execução simultânea segura do mesmo command buffer de tessellation
+- executar regressões e validação de feature antes de anunciar suporte
+
+Portanto, o checkpoint atual comprova a integração de compilador, ABI,
+recursos e a sequência física **SW VS → WAIT → TCS** no build. Ainda não
+comprova renderização tessellated completa.
+
+`tessellationShader=true` só será anunciado depois da implementação completa e
+validação em hardware real.
 
 ---
 
 ## 🛠️ Próximos passos (priorizados)
 
-A prioridade atual está no caminho PanVK nativo:
+A prioridade continua sendo completar o caminho PanVK nativo sem criar uma
+segunda infraestrutura de dispatch ou espalhar dependências kbase pelas
+camadas genéricas.
 
-1. Fechar o runtime do `poly_heap` para tessellation. (🚧)
-2. Preparar `poly_vertex_params` e `poly_tess_params`. (🚧)
-3. Integrar os buffers e `gfx.sysvals.poly`. (🚧)
-4. Disparar software VS e TCS na ordem correta. (🚧)
-5. Integrar COUNT → prefix sum → WITH_COUNTS. (🚧)
-6. Produzir e consumir o draw indexed indirect final do TES. (🚧)
-7. Validar tessellation em hardware real antes de anunciar a feature. (🚧)
-8. Depois disso, continuar a investigação de `geometryShader` e `multiViewport`. (🧪)
-9. Manter `textureCompressionBC` desativado sem implementação real. (🚧)
-10. Revalidar DXVK/VKD3D sobre uma base PanVK estável. (🧪)
+1. Integrar o lançamento do tessellator e a etapa de contagem. (🚧)
+2. Integrar prefix sum e geração/alocação do index buffer. (🚧)
+3. Disparar o kernel libpoly de isolines/triangles/quads apropriado. (🚧)
+4. Integrar TES e o indexed draw final gerado pelo tessellator. (🚧)
+5. Validar tessellation direct completa na Mali-G720 real. (🚧)
+6. Implementar e validar o caminho indirect. (🚧)
+7. Resolver segurança de simultaneous-use do mesmo command buffer. (🚧)
+8. Só então anunciar `tessellationShader`. (🚧)
+9. Depois disso, fazer uma auditoria focada de vazamentos panthor/DRM/UAPI
+   fora da camada kmod e reduzir diferenças desnecessárias do upstream. (🧪)
+10. Continuar depois a investigação de `geometryShader` e `multiViewport`. (🧪)
+11. Manter `textureCompressionBC` desativado sem implementação real. (🚧)
+12. Revalidar DXVK/VKD3D sobre uma base PanVK estável. (🧪)
+
+Política de manutenção do fork:
+- manter PanVK/libpoly genéricos o mais próximos possível do upstream;
+- isolar detalhes kbase/CSF na camada mais baixa apropriada;
+- não anunciar features antes de implementação e validação;
+- quando o Mesa upstream implementar uma solução equivalente, preferir a
+  implementação upstream em vez de manter uma duplicação local.
 
 Status legend:
-- ✅ validado
-- 🧪 experimental (provas de conceito)
+- ✅ integrado / validado no nível indicado
+- 🧪 experimental / investigação
 - 🚧 em desenvolvimento
 - ❌ ainda não suportado / não implementado
 
