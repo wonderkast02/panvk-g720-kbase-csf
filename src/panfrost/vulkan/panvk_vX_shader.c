@@ -1476,6 +1476,13 @@ panvk_compile_shader(struct panvk_device *dev,
          nir_shader *nir = info->nir;
 
          /*
+          * Preserve the original cross-lane VS output mask. libpoly turns
+          * this shader into COMPUTE below, so the original VS output info
+          * must be retained explicitly for poly_vertex_params.
+          */
+         shader->tess.vs_outputs = nir->info.outputs_written;
+
+         /*
           * Use the normal graphics descriptor/Vulkan lowering while the
           * original stage is still visible as VERTEX.
           */

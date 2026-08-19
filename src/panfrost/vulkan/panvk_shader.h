@@ -480,6 +480,9 @@ enum panvk_vs_variant {
  * consumed by the PanVK/libpoly runtime, not by the Panfrost backend.
  */
 struct panvk_tess_info {
+   /* Original VS outputs before VS->COMPUTE libpoly lowering. */
+   uint64_t vs_outputs;
+
    uint64_t tcs_per_vertex_outputs;
 
    uint32_t tcs_output_patch_size;

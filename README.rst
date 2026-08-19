@@ -229,6 +229,35 @@ Development policy
 Vulkan feature bits are only advertised after implementation and runtime
 validation.
 
+.. G720_TESS_RUNTIME_CHECKPOINT_BEGIN
+
+Direct tessellation runtime checkpoint
+--------------------------------------
+
+The ``ci`` branch now contains build-validated direct-draw runtime
+groundwork for libpoly tessellation on the CSF PanVK path.
+
+Current infrastructure includes:
+
+* per-draw ``poly_vertex_params`` and ``poly_tess_params`` allocation;
+* per-draw VS output, TCS output, coordinate-allocation, count and
+  indirect-draw storage;
+* preservation of the original software-VS output mask before
+  VS-to-compute lowering;
+* poly parameter-buffer addresses wired through the shared graphics/compute
+  sysval layout;
+* TLS accounting extended to the physical TCS and TES shaders;
+* direct tessellation draws diverted away from the normal IDVS path;
+* software VS and TCS dispatched through the existing PanVK compute
+  machinery, with a CSF wait between the producer and consumer stages.
+
+This is runtime infrastructure only. ``tessellationShader`` remains
+disabled. Tessellator kernel execution, the final TES/indexed draw,
+indirect tessellation, runtime validation, and safe simultaneous execution
+of the same tessellation command buffer are still pending.
+
+.. G720_TESS_RUNTIME_CHECKPOINT_END
+
 Upstream Mesa
 -------------
 The upstream README content follows below and is preserved unmodified.

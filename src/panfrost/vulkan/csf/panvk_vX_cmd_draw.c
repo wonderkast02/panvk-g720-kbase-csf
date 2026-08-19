@@ -51,6 +51,7 @@
 #include "vk_pipeline_layout.h"
 #include "vk_render_pass.h"
 #include "poly/geometry.h"
+#include "poly/tessellator.h"
 
 /* On kbase, tiler-heap maintenance is done wholesale by the queue's heap
  * renewal (TERM+INIT of the whole heap) rather than through the firmware
@@ -552,6 +553,226 @@ prepare_poly_heap(struct panvk_cmd_buffer *cmdbuf)
 }
 
 /*
+ * Allocate and initialize the libpoly ABI for a direct tessellation draw.
+ *
+ * Indirect tessellation needs a GPU setup kernel because the vertex and
+ * instance counts are not known while recording the command buffer.
+ */
+static VkResult
+prepare_direct_tess_params(struct panvk_cmd_buffer *cmdbuf,
+                           const struct panvk_draw_info *draw)
+{
+   if (draw->indirect.buffer_dev_addr)
+      return VK_SUCCESS;
+
+   const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
+   const struct panvk_shader *tcs = cmdbuf->state.gfx.tess.tcs.shader;
+   const struct panvk_shader *tes = cmdbuf->state.gfx.tess.tes.shader;
+   const struct vk_dynamic_graphics_state *dyn =
+      &cmdbuf->vk.dynamic_graphics_state;
+
+   assert(vs && tcs && tes);
+
+   if (!vs || !tcs || !tes)
+      return VK_ERROR_UNKNOWN;
+
+   const uint32_t input_patch_size = dyn->ts.patch_control_points;
+
+   assert(input_patch_size > 0);
+   assert((tcs->tess.tcs_output_stride & 3) == 0);
+
+   if (!input_patch_size || (tcs->tess.tcs_output_stride & 3))
+      return VK_ERROR_UNKNOWN;
+
+   const uint64_t vs_outputs = vs->tess.vs_outputs;
+   const uint64_t invocations =
+      (uint64_t)draw->vertex.count * draw->instance.count;
+
+   const uint32_t patches_per_instance =
+      draw->vertex.count / input_patch_size;
+
+   const uint64_t nr_patches64 =
+      (uint64_t)patches_per_instance * draw->instance.count;
+
+   /*
+    * These fields are 32-bit in the libpoly ABI. Large draws will need
+    * splitting if we ever need to support counts beyond this limit.
+    */
+   if (invocations > UINT32_MAX || nr_patches64 > UINT32_MAX)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   const uint32_t nr_patches = nr_patches64;
+   const uint32_t tcs_stride_el =
+      tcs->tess.tcs_output_stride / sizeof(uint32_t);
+
+   /*
+    * Per-draw blob:
+    *
+    *   VS output
+    *   TCS output
+    *   coord_allocs[nr_patches]
+    *   counts[nr_patches]
+    *   one VkDrawIndexedIndirectCommand
+    */
+   const uint64_t vs_output_size =
+      invocations * util_bitcount64(vs_outputs) * 16ull;
+
+   const uint64_t tcs_output_size =
+      nr_patches64 * tcs->tess.tcs_output_stride;
+
+   const uint64_t coord_size =
+      nr_patches64 * sizeof(uint32_t);
+
+   const uint64_t count_size =
+      nr_patches64 * sizeof(uint32_t);
+
+   const uint64_t draw_size = 5 * sizeof(uint32_t);
+
+   uint64_t blob_size = 0;
+
+   if (__builtin_add_overflow(blob_size, vs_output_size, &blob_size) ||
+       __builtin_add_overflow(blob_size, tcs_output_size, &blob_size) ||
+       __builtin_add_overflow(blob_size, coord_size, &blob_size) ||
+       __builtin_add_overflow(blob_size, count_size, &blob_size) ||
+       __builtin_add_overflow(blob_size, draw_size, &blob_size) ||
+       blob_size > SIZE_MAX)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   size_t offs = 0;
+
+   const size_t vs_output_offs = offs;
+   offs += vs_output_size;
+
+   const size_t tcs_output_offs = offs;
+   offs += tcs_output_size;
+
+   const size_t coord_offs = offs;
+   offs += coord_size;
+
+   const size_t count_offs = offs;
+   offs += count_size;
+
+   const size_t draw_offs = offs;
+   offs += draw_size;
+
+   assert(offs == blob_size);
+
+   struct pan_ptr blob =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc, offs, 16);
+
+   struct pan_ptr vertex_params =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc,
+                              sizeof(struct poly_vertex_params), 8);
+
+   struct pan_ptr tess_params =
+      panvk_cmd_alloc_dev_mem(cmdbuf, desc,
+                              sizeof(struct poly_tess_params), 8);
+
+   if (!blob.gpu || !vertex_params.gpu || !tess_params.gpu)
+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+
+   /* -------------------------------------------------------------
+    * Software VS parameters
+    * ------------------------------------------------------------- */
+   const uint32_t vs_wg_size[3] = {64, 1, 1};
+   struct poly_vertex_params *vp = vertex_params.cpu;
+
+   poly_vertex_params_init(vp, vs_outputs, vs_wg_size);
+   poly_vertex_params_set_draw(vp, draw->vertex.count,
+                               draw->instance.count);
+
+   vp->output_buffer = blob.gpu + vs_output_offs;
+
+   if (draw->index.index_size) {
+      const uint32_t index_size_B = draw->index.index_size;
+      const uint64_t size_el64 =
+         draw->index.buffer_size / index_size_B;
+      const uint32_t size_el =
+         MIN2(size_el64, (uint64_t)UINT32_MAX);
+
+      vp->index_size_B = index_size_B;
+      vp->index_buffer =
+         draw->index.buffer_dev_addr +
+         ((uint64_t)draw->index.offset * index_size_B);
+      vp->index_buffer_range_el =
+         poly_index_buffer_range_el(size_el, draw->index.offset);
+   }
+
+   /* -------------------------------------------------------------
+    * TCS / tessellator / TES parameters
+    * ------------------------------------------------------------- */
+   enum poly_tess_partitioning partitioning =
+      tes->tess.spacing == TESS_SPACING_EQUAL
+         ? POLY_TESS_PARTITIONING_INTEGER
+      : tes->tess.spacing == TESS_SPACING_FRACTIONAL_ODD
+         ? POLY_TESS_PARTITIONING_FRACTIONAL_ODD
+         : POLY_TESS_PARTITIONING_FRACTIONAL_EVEN;
+
+   struct poly_tess_params *tp = tess_params.cpu;
+
+   *tp = (struct poly_tess_params) {
+      .heap = cmdbuf->poly_heap.header.gpu,
+
+      /*
+       * The heap header and backing storage are separate in PanVK.
+       * Tess coordinates live in the backing BO, not after the header.
+       */
+      .patch_coord_buffer = cmdbuf->poly_heap.bo->addr.dev,
+
+      .coord_allocs = blob.gpu + coord_offs,
+      .out_draws = blob.gpu + draw_offs,
+      .tcs_buffer = blob.gpu + tcs_output_offs,
+      .counts = blob.gpu + count_offs,
+
+      /* Filled later by panlib_prefix_sum_tess(). */
+      .index_buffer = 0,
+
+      /* Pipeline statistics are not wired yet. */
+      .statistic = 0,
+
+      .tcs_per_vertex_outputs = tcs->tess.tcs_per_vertex_outputs,
+      .input_patch_size = input_patch_size,
+      .output_patch_size = tcs->tess.tcs_output_patch_size,
+      .tcs_patch_constants = tcs->tess.tcs_nr_patch_outputs,
+      .patches_per_instance = patches_per_instance,
+      .tcs_stride_el = tcs_stride_el,
+      .nr_patches = nr_patches,
+
+      .partitioning = partitioning,
+      .points_mode = tes->tess.points,
+      .isolines = tes->tess.mode == TESS_PRIMITIVE_ISOLINES,
+   };
+
+   if (!tp->points_mode && !tp->isolines) {
+      tp->ccw = tes->tess.ccw;
+      tp->ccw ^=
+         dyn->ts.domain_origin ==
+         VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT;
+   }
+
+   /*
+    * poly_nir_lower_sysvals() resolves these addresses through the poly
+    * block shared at the same FAU offset by graphics and compute sysvals.
+    */
+   cmdbuf->state.gfx.sysvals.poly.vertex_param_buffer =
+      vertex_params.gpu;
+   cmdbuf->state.gfx.sysvals.poly.tess_param_buffer =
+      tess_params.gpu;
+
+   cmdbuf->state.gfx.tess.out_draws = tp->out_draws;
+
+   /*
+    * These buffers are per draw, so every physical tess stage must get
+    * a fresh FAU block before it executes.
+    */
+   gfx_state_set_dirty(cmdbuf, VS_PUSH_UNIFORMS);
+   gfx_state_set_dirty(cmdbuf, TCS_PUSH_UNIFORMS);
+   gfx_state_set_dirty(cmdbuf, TES_PUSH_UNIFORMS);
+
+   return VK_SUCCESS;
+}
+
+/*
  * Tessellation control is compiled as a physical COMPUTE shader, so its
  * driver set follows the compute descriptor ABI:
  *
@@ -987,6 +1208,10 @@ update_tls(struct panvk_cmd_buffer *cmdbuf)
       panvk_shader_hw_variant(cmdbuf->state.gfx.vs.shader);
    const struct panvk_shader_variant *xfb =
       panvk_shader_xfb_variant(cmdbuf->state.gfx.vs.shader);
+   const struct panvk_shader_variant *tcs =
+      panvk_shader_only_variant(cmdbuf->state.gfx.tess.tcs.shader);
+   const struct panvk_shader_variant *tes =
+      panvk_shader_only_variant(cmdbuf->state.gfx.tess.tes.shader);
    const struct panvk_shader_variant *fs =
       panvk_shader_only_variant(get_fs(cmdbuf));
    struct cs_builder *b =
@@ -1013,9 +1238,19 @@ update_tls(struct panvk_cmd_buffer *cmdbuf)
       }
    }
 
-   state->info.tls.size = MAX3(
-      MAX2(vs->info.tls_size, xfb->info.tls_size),
-      fs ? fs->info.tls_size : 0, state->info.tls.size);
+   unsigned tls_size =
+      MAX2(vs->info.tls_size, xfb->info.tls_size);
+
+   if (tcs)
+      tls_size = MAX2(tls_size, tcs->info.tls_size);
+
+   if (tes)
+      tls_size = MAX2(tls_size, tes->info.tls_size);
+
+   if (fs)
+      tls_size = MAX2(tls_size, fs->info.tls_size);
+
+   state->info.tls.size = MAX2(state->info.tls.size, tls_size);
    return VK_SUCCESS;
 }
 
@@ -3149,6 +3384,108 @@ launch_gfx_cs(struct panvk_cmd_buffer *cmdbuf,
    compute_state_set_dirty(cmdbuf, PUSH_UNIFORMS);
 }
 
+/*
+ * Execute the software vertex stage and tessellation control stage.
+ *
+ * Both are physical compute shaders.  Keep this path on the regular PanVK
+ * compute dispatch machinery so tessellation does not grow a second CSF
+ * dispatch implementation.
+ *
+ * The tessellator and final TES draw are intentionally not launched here yet.
+ */
+static VkResult
+launch_tess_stages(struct panvk_cmd_buffer *cmdbuf,
+                   const struct panvk_draw_info *draw)
+{
+   struct panvk_cmd_graphics_state *gfx = &cmdbuf->state.gfx;
+   const struct panvk_shader_variant *sw_vs =
+      panvk_shader_hw_variant(gfx->vs.shader);
+   const struct panvk_shader_variant *tcs =
+      panvk_shader_only_variant(gfx->tess.tcs.shader);
+
+   assert(sw_vs && tcs);
+   assert(sw_vs->cs.local_size.x > 0);
+   assert(sw_vs->cs.local_size.y > 0);
+   assert(sw_vs->cs.local_size.z > 0);
+   assert(tcs->cs.local_size.x ==
+          gfx->tess.tcs.shader->tess.tcs_output_patch_size);
+
+   const uint32_t input_patch_size =
+      cmdbuf->vk.dynamic_graphics_state.ts.patch_control_points;
+
+   assert(input_patch_size > 0);
+
+   if (!input_patch_size)
+      return VK_ERROR_UNKNOWN;
+
+   const uint32_t patches_per_instance =
+      draw->vertex.count / input_patch_size;
+
+   /* An incomplete input patch produces no tessellated primitives. */
+   if (!patches_per_instance)
+      return VK_SUCCESS;
+
+   /*
+    * The poly sysval addresses are different for every draw, so allocate
+    * fresh FAU blocks for both physical compute stages.
+    */
+   struct pan_ptr sw_vs_push;
+   VkResult result = panvk_per_arch(cmd_prepare_gfx_push_uniforms)(
+      cmdbuf, sw_vs, &sw_vs_push, 1);
+   if (result != VK_SUCCESS)
+      return result;
+
+   struct pan_ptr tcs_push;
+   result = panvk_per_arch(cmd_prepare_gfx_push_uniforms)(
+      cmdbuf, tcs, &tcs_push, 1);
+   if (result != VK_SUCCESS)
+      return result;
+
+   gfx->vs.push_uniforms = sw_vs_push.gpu;
+   gfx->tess.tcs.push_uniforms = tcs_push.gpu;
+
+   /*
+    * Software VS:
+    *
+    * global invocation X = input vertex
+    * global invocation Y = instance
+    *
+    * poly_nir_lower_sw_vs() handles the padded final X workgroup.
+    */
+   struct panvk_dispatch_info vs_dispatch = {
+      .direct.wg_count = {
+         .x = DIV_ROUND_UP(draw->vertex.count, sw_vs->cs.local_size.x),
+         .y = DIV_ROUND_UP(draw->instance.count, sw_vs->cs.local_size.y),
+         .z = 1,
+      },
+      .barrier = PANVK_CSF_BARRIER_WAIT,
+   };
+
+   launch_gfx_cs(cmdbuf, sw_vs, &gfx->vs.desc,
+                 sw_vs_push.gpu, &vs_dispatch);
+
+   /*
+    * WAIT above guarantees that the software VS has completed before the
+    * TCS reads the intermediate vertex buffer.
+    *
+    * One TCS workgroup represents one output patch.  The workgroup itself
+    * contains tcs_output_patch_size invocations.
+    */
+   struct panvk_dispatch_info tcs_dispatch = {
+      .direct.wg_count = {
+         .x = patches_per_instance,
+         .y = draw->instance.count,
+         .z = 1,
+      },
+      .barrier = PANVK_CSF_BARRIER_WAIT,
+   };
+
+   launch_gfx_cs(cmdbuf, tcs, &gfx->tess.tcs.desc,
+                 tcs_push.gpu, &tcs_dispatch);
+
+   return VK_SUCCESS;
+}
+
 static void
 launch_draw(struct panvk_cmd_buffer *cmdbuf,
             const struct panvk_draw_info *draw)
@@ -3497,11 +3834,33 @@ panvk_cmd_draw(struct panvk_cmd_buffer *cmdbuf, struct panvk_draw_info draw)
       result = prepare_poly_heap(cmdbuf);
       if (result != VK_SUCCESS)
          return;
+
+      result = prepare_direct_tess_params(cmdbuf, &draw);
+      if (result != VK_SUCCESS)
+         return;
    }
 
    result = prepare_descs(cmdbuf, &draw);
    if (result != VK_SUCCESS)
       return;
+
+   /*
+    * Tessellation starts with two physical compute stages.  Do not enter
+    * prepare_draw()/IDVS with the software VS, since that shader is no longer
+    * a hardware vertex shader after libpoly lowering.
+    */
+   if (cmdbuf->state.gfx.tess.tes.shader) {
+      result = update_tls(cmdbuf);
+      if (result != VK_SUCCESS)
+         return;
+
+      result = launch_tess_stages(cmdbuf, &draw);
+      if (result != VK_SUCCESS)
+         return;
+
+      /* Tessellator + TES + final indexed draw are the next runtime stage. */
+      return;
+   }
 
    /* For indirect draws, we need to patch the descriptors we just emitted */
    if (draw.indirect.buffer_dev_addr)

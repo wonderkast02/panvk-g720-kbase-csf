@@ -229,6 +229,9 @@ struct panvk_cmd_graphics_state {
          struct panvk_shader_desc_state desc;
          uint64_t push_uniforms;
       } tes;
+
+      /* VkDrawIndexedIndirectCommand emitted by the tessellator. */
+      uint64_t out_draws;
    } tess;
 
    struct {
