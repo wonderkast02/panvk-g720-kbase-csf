@@ -121,82 +121,107 @@ previous fixed assumption.
 Tessellation
 ------------
 
-Compiler and runtime groundwork (build-validated)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Direct runtime path validated on Mali-G720
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The current ``ci`` branch contains the compiler plumbing and the first direct
-runtime stages required for libpoly tessellation on CSF PanVK.
+The direct PanVK/libpoly tessellation path has now executed end-to-end on the
+Mali-G720/kbase/CSF development target.
 
-Completed groundwork:
+The validated direct sequence is:
 
-- VS -> COMPUTE
-- TCS -> COMPUTE
-- TES -> VERTEX
-- TCS/TES metadata
-- TCS/TES binding/state
-- TCS/TES descriptors
-- poly sysvals ABI
-- libpoly ABI audit
-- Physical64 ptr_size fix
-- libpan precompiled tessellation kernels
-- CSF-only tessellation kernel scope for v10/v12/v13/v14
-- per-command-buffer poly heap
-- per-draw VS/TCS/tessellation storage
-- ``poly_vertex_params`` allocation/setup
-- ``poly_tess_params`` allocation/setup
-- original software-VS output-mask preservation
-- ``gfx.sysvals.poly`` parameter-buffer wiring
-- TLS accounting for the physical TCS and TES stages
-- direct tessellation draws diverted from the normal IDVS path
-- software VS dispatched through the existing PanVK compute machinery
-- CSF WAIT dependency between software VS and TCS
-- TCS dispatched through the existing PanVK compute machinery
+.. code-block:: text
 
-Relevant checkpoints include:
+   software VS
+       |
+       v
+   TCS
+       |
+       v
+   libpoly topology COUNT
+       |
+       v
+   tessellation prefix sum
+       |
+       v
+   topology WITH_COUNTS
+       |
+       v
+   generated indexed indirect draw
+       |
+       v
+   TES / IDVS
+       |
+       v
+   rasterization / framebuffer
 
-- ``8edb5d94746`` — preserve pointer size for precompiled compute variants
-- ``2aef87163bf`` — add poly tessellation precompiled kernels
-- ``65aeaf80726`` — scope tessellation kernels to CSF architectures
-- ``85b972dd387`` — add per-command-buffer poly heap
-- ``0a742fa22ec`` — stage direct tessellation VS and TCS
+Important implementation fixes validated during bring-up:
 
-Precompiled kernels available:
+- software-VS padded compute invocations are guarded with NIR control flow,
+  preventing WG64 padding lanes from writing beyond the logical vertex output
+  allocation;
+- the generic libpoly implementation remains unchanged for that guard;
+- TES output bases are recomputed after ``poly_nir_lower_tes()`` because
+  point-mode lowering can introduce the default point-size output after the
+  original TES IO assignment;
+- the fix uses the existing generic
+  ``nir_recompute_io_bases(nir, nir_var_shader_out)`` helper;
+- the libpoly heap/index contract was verified: the hardware index-buffer base
+  is the poly heap base and the generated indirect ``firstIndex`` carries the
+  allocated heap offset.
 
-- ``panlib_prefix_sum_tess``
-- ``panlib_tess_isoline``
-- ``panlib_tess_tri``
-- ``panlib_tess_quad``
+Hardware validation completed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The mesa_clc -> SPIR-V -> panfrost_compile pipeline generates these
-precompiled tessellation kernels for the CSF architectures
-(v10/v12/v13/v14). Legacy v4/v5/v6/v7/v9 builds retain the normal libpan
-shader set without the CSF tessellation kernels.
+The following focused tests passed on Mali-G720 MC8:
 
-Runtime work still required
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- direct SW-VS -> TCS -> COUNT -> PREFIX -> WITH_COUNTS -> TES/IDVS execution;
+- final normal rasterized tessellation draw with successful CSF completion;
+- 64x64 framebuffer semantic oracle: all 4096 pixels matched the CPU triangle
+  reference;
+- asymmetric triangle point-mode oracle using
+  ``inner=3, outer={2,3,4}``: all 12 expected tessellation-coordinate points
+  matched;
+- TES user-defined IO -> fragment-shader validation: all 12 point colors
+  matched ``gl_TessCoord``;
+- ``fractional_even_spacing`` parity-aligned triangle case: 19/19 expected
+  points, no missing/extra/color mismatches;
+- ``fractional_odd_spacing`` parity-aligned triangle case: 29/29 expected
+  points, no missing/extra/color mismatches;
+- quad point-mode case ``inner={4,3}, outer={2,3,4,6}``: 21/21 points;
+- isoline point-mode case ``outer={4,6}``: 28/28 points.
 
-``tessellationShader`` remains ``false``. The feature must not be advertised
-until the entire runtime path is implemented and validated on hardware.
+These tests establish functional direct-path execution and semantic correctness
+for the cases above. They are not Vulkan conformance claims.
 
-Remaining work includes:
+Feature exposure and remaining work
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- launch the tessellator/count processing path
-- prefix-sum processing and final index-buffer allocation
-- launch the topology-specific libpoly tessellator kernel
-- execute TES and consume the generated indexed draw
-- validate the complete direct-draw path on Mali-G720 hardware
-- implement/validate indirect tessellation draws
-- make simultaneous execution of the same tessellation command buffer safe
-- run focused regression and Vulkan feature validation before advertising it
+``tessellationShader`` remains ``false`` in the published checkpoint.
 
-The current checkpoint therefore proves compiler integration, resource
-preparation and the SW-VS -> WAIT -> TCS runtime sequence at build level; it
-does not yet claim functional tessellation rendering.
+The full path was activated temporarily for focused hardware validation and is
+kept gated while the remaining integration work is completed. In particular,
+the project still needs:
+
+- audit and validation of application indirect tessellation draws;
+- multiple sequential tessellation draws and complete PanVK dirty-state
+  handling;
+- query/XFB and other surrounding graphics-state interactions;
+- simultaneous-use / command-buffer lifetime audit;
+- winding, patch-discard, limits and invariance coverage;
+- fractional-spacing property testing for non-integer levels where exact
+  tessellation coordinates are implementation-defined;
+- focused regression testing and broader Vulkan CTS coverage;
+- cleanup of remaining development diagnostics before feature advertisement.
+
+``vertexPipelineStoresAndAtomics`` is also not force-enabled on this G720
+checkpoint merely to run tessellation tests.
+
+The feature will only be advertised after these remaining areas are validated.
 
 Unsupported / deferred features (current state)
 -----------------------------------------------
 - geometryShader — disabled
-- tessellationShader — disabled, runtime implementation in progress
+- tessellationShader — disabled; direct path hardware-validated, integration/conformance work remains
 - multiViewport — disabled
 - textureCompressionBC — unsupported on this hardware path
 - shaderClipDistance — deferred

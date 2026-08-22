@@ -26,6 +26,7 @@
 #include "util/shader_stats.h"
 #include "util/u_dynarray.h"
 #include "nir_builder.h"
+#include "nir_control_flow.h"
 #include "nir_conversion_builder.h"
 #include "nir_deref.h"
 #include "nir_xfb_info.h"
@@ -43,6 +44,7 @@
 #include "pan_shader.h"
 
 #include "poly/nir/poly_nir.h"
+#include "poly/geometry.h"
 
 #include "vk_log.h"
 #include "vk_pipeline.h"
@@ -265,6 +267,98 @@ panvk_lower_load_vs_input(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_def_replace(&intrin->def, ld_attr);
 
    return true;
+}
+
+static bool
+panvk_lower_vertex_id_zero_base_instr(nir_builder *b,
+                                      nir_intrinsic_instr *intrin,
+                                      void *data)
+{
+   if (intrin->intrinsic != nir_intrinsic_load_vertex_id_zero_base)
+      return false;
+
+   b->cursor = nir_instr_remove(&intrin->instr);
+
+   nir_def *id =
+      nir_channel(b, nir_load_global_invocation_id(b, 32), 0);
+   nir_def_rewrite_uses(&intrin->def, id);
+
+   return true;
+}
+
+static bool
+panvk_lower_vertex_id_zero_base(nir_shader *nir)
+{
+   bool progress =
+      nir_shader_intrinsics_pass(nir,
+                                 panvk_lower_vertex_id_zero_base_instr,
+                                 nir_metadata_control_flow,
+                                 NULL);
+
+   if (progress) {
+      BITSET_SET(nir->info.system_values_read,
+                 SYSTEM_VALUE_GLOBAL_INVOCATION_ID);
+      BITSET_CLEAR(nir->info.system_values_read,
+                   SYSTEM_VALUE_VERTEX_ID_ZERO_BASE);
+   }
+
+   return progress;
+}
+
+/*
+ * CSF launches complete compute workgroups for the software VS.  For a
+ * non-multiple-of-64 vertex count, the final workgroup therefore contains
+ * physical invocations which do not correspond to Vulkan vertex invocations.
+ *
+ * Keep generic libpoly unchanged.  At the PanVK execution boundary, wrap the
+ * complete original SW-VS body in a bounds check.  This prevents padded lanes
+ * from executing output stores or any other shader side effect.
+ *
+ * Do not use nir_jump_return here: Panfrost's divergence analysis does not
+ * support return instructions at this point in the compiler pipeline.
+ */
+static bool
+panvk_lower_sw_vs_padded_invocations(nir_shader *nir)
+{
+   nir_function_impl *impl = nir_shader_get_entrypoint(nir);
+
+   /*
+    * Save the complete original shader body.  Mesa uses the same NIR CF
+    * extraction/reinsertion machinery when surrounding an existing shader
+    * body with newly generated control flow.
+    */
+   nir_cf_list body;
+   nir_cf_list_extract(&body, &impl->body);
+
+   nir_builder b = nir_builder_at(nir_after_impl(impl));
+
+   nir_def *global_x =
+      nir_channel(&b, nir_load_global_invocation_id(&b, 32), 0);
+
+   nir_def *vp = nir_load_vertex_param_buffer_poly(&b);
+   nir_def *vertex_count_addr =
+      nir_iadd_imm(&b, vp,
+                   offsetof(struct poly_vertex_params, verts_per_instance));
+
+   nir_def *vertex_count =
+      nir_load_global_constant(&b, 1, 32, vertex_count_addr,
+                               .align_mul = 4);
+
+   /*
+    * Only real Vulkan vertex invocations enter the original shader body.
+    * Y remains the Vulkan instance dimension.
+    */
+   nir_if *active =
+      nir_push_if(&b, nir_ult(&b, global_x, vertex_count));
+
+   nir_cursor body_cursor = b.cursor;
+
+   nir_pop_if(&b, active);
+
+   /* Insert the complete original VS into the true side of the condition. */
+   nir_cf_reinsert(&body, body_cursor);
+
+   return nir_progress(true, impl, nir_metadata_none);
 }
 
 #if PAN_ARCH < 9
@@ -1476,13 +1570,6 @@ panvk_compile_shader(struct panvk_device *dev,
          nir_shader *nir = info->nir;
 
          /*
-          * Preserve the original cross-lane VS output mask. libpoly turns
-          * this shader into COMPUTE below, so the original VS output info
-          * must be retained explicitly for poly_vertex_params.
-          */
-         shader->tess.vs_outputs = nir->info.outputs_written;
-
-         /*
           * Use the normal graphics descriptor/Vulkan lowering while the
           * original stage is still visible as VERTEX.
           */
@@ -1528,9 +1615,27 @@ panvk_compile_shader(struct panvk_device *dev,
                   &inputs.no_idvs);
 
          /*
+          * Capture exactly the output mask libpoly is about to consume.
+          *
+          * panvk_lower_nir() gathers shader info, and the IO lowering above
+          * may further transform the shader. Re-gather here so the CPU-side
+          * poly_vertex_params allocation and poly_nir_lower_vs_before_gs()
+          * agree on the same outputs_written mask.
+          */
+         nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+         shader->tess.vs_outputs = nir->info.outputs_written;
+
+         /*
           * Write VS outputs into libpoly's intermediate vertex buffer.
           */
          NIR_PASS(_, nir, poly_nir_lower_vs_before_gs);
+
+         /*
+          * A software VS has no hardware zero-based vertex ID.  Its raw
+          * invocation index is global_invocation_id.x; poly_nir_lower_sw_vs()
+          * subsequently reconstructs the Vulkan vertex ID/indexed draw.
+          */
+         NIR_PASS(_, nir, panvk_lower_vertex_id_zero_base);
 
          /*
           * The physical execution stage is now compute.
@@ -1554,6 +1659,13 @@ panvk_compile_shader(struct panvk_device *dev,
           * buffer and indexed-draw input assembly.
           */
          NIR_PASS(_, nir, poly_nir_lower_sw_vs);
+
+         /*
+          * CSF rounds SW-VS execution up to complete workgroups.
+          * Predicate the original shader body so padded lanes are inert.
+          */
+         NIR_PASS(_, nir, panvk_lower_sw_vs_padded_invocations);
+
          NIR_PASS(_, nir, poly_nir_lower_sysvals);
 
          nir->options =
@@ -1709,9 +1821,23 @@ panvk_compile_shader(struct panvk_device *dev,
       nir_shader *nir = info->nir;
 
       /*
-       * Retain the original TCS output ABI before libpoly rewrites the IO
-       * and turns this Vulkan stage into compute.
+       * libpoly expects regular NIR IO intrinsics, including the
+       * per-vertex TCS forms.  Do this while the shader is still
+       * MESA_SHADER_TESS_CTRL.
        */
+      nir_assign_io_var_locations(nir, nir_var_shader_in);
+      nir_assign_io_var_locations(nir, nir_var_shader_out);
+      panvk_lower_tess_nir_io(nir);
+
+      /*
+       * Refresh outputs_written/patch_outputs_written after lowering the
+       * Vulkan TCS variables to the IO intrinsics consumed by libpoly.
+       *
+       * Capture the ABI only after this gather so the CPU allocation and
+       * poly_nir_lower_tcs() agree on exactly the same output layout.
+       */
+      nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
       shader->tess.tcs_output_patch_size =
          nir->info.tess.tcs_vertices_out;
       shader->tess.tcs_per_vertex_outputs =
@@ -1720,15 +1846,6 @@ panvk_compile_shader(struct panvk_device *dev,
          util_last_bit(nir->info.patch_outputs_written);
       shader->tess.tcs_output_stride =
          poly_tcs_output_stride(nir);
-
-      /*
-       * libpoly expects regular NIR IO intrinsics, including the
-       * per-vertex TCS forms.  Do this while the shader is still
-       * MESA_SHADER_TESS_CTRL.
-       */
-      nir_assign_io_var_locations(nir, nir_var_shader_in);
-      nir_assign_io_var_locations(nir, nir_var_shader_out);
-      panvk_lower_tess_nir_io(nir);
 
       /*
        * Save this before destroying the tessellation stage information.
@@ -1853,6 +1970,14 @@ panvk_compile_shader(struct panvk_device *dev,
        * changes nir->info.stage from TESS_EVAL to VERTEX.
        */
       NIR_PASS(_, nir, poly_nir_lower_tes, true);
+
+      /*
+       * poly_nir_lower_tes() may add a default point-size output after
+       * TES IO has already been lowered.  Recompute lowered output bases so
+       * newly introduced built-ins cannot alias an existing output base.
+       */
+      NIR_PASS(_, nir, nir_recompute_io_bases, nir_var_shader_out);
+
       NIR_PASS(_, nir, poly_nir_lower_sysvals);
 
       assert(nir->info.stage == MESA_SHADER_VERTEX);

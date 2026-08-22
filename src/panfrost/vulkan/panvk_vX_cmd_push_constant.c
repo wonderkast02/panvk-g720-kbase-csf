@@ -102,6 +102,14 @@ panvk_per_arch(CmdPushConstants2KHR)(
    if (pPushConstantsInfo->stageFlags & VK_SHADER_STAGE_VERTEX_BIT)
       gfx_state_set_dirty(cmdbuf, VS_PUSH_UNIFORMS);
 
+   if (pPushConstantsInfo->stageFlags &
+       VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT)
+      gfx_state_set_dirty(cmdbuf, TCS_PUSH_UNIFORMS);
+
+   if (pPushConstantsInfo->stageFlags &
+       VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT)
+      gfx_state_set_dirty(cmdbuf, TES_PUSH_UNIFORMS);
+
    if (pPushConstantsInfo->stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT)
       gfx_state_set_dirty(cmdbuf, FS_PUSH_UNIFORMS);
 
