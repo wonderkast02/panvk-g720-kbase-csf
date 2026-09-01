@@ -1275,7 +1275,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
    if (!dma_heap || !dma_heap[0])
       dma_heap = "/dev/dma_heap/system";
 
-   kbase_dev->dma_heap_fd = open(dma_heap, O_RDWR | O_CLOEXEC);
+   kbase_dev->dma_heap_fd = open(dma_heap, O_RDONLY | O_CLOEXEC);
    if (kbase_dev->dma_heap_fd < 0)
       mesa_logd("kbase: dma-heap unavailable at %s: %s", dma_heap,
                 strerror(errno));
