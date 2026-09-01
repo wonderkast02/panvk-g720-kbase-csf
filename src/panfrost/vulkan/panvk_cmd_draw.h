@@ -474,6 +474,8 @@ struct panvk_draw_info {
       uint64_t count_buffer_dev_addr;
       uint32_t draw_count;
       uint32_t stride;
+      /* CPU-unrolled tess indirect record; count activation remains GPU-side. */
+      uint32_t record_index;
    } indirect;
 
    enum mesa_prim prim;

@@ -2287,6 +2287,16 @@ panvk_queue_submit_init_storage(
       struct panvk_cmd_buffer *cmdbuf = container_of(
          vk_submit->command_buffers[i], struct panvk_cmd_buffer, vk);
 
+
+      /*
+       * Tessellation command buffers currently carry mutable execution state.
+       * Serialize replay of simultaneous-use tessellation command buffers until
+       * that state is made per-execution.
+       */
+      if ((cmdbuf->flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT) &&
+          cmdbuf->state.gfx.tess.tes.shader)
+         submit->force_sync = true;
+
       if (UINT64_MAX - submit->tiler_work_estimate <
           cmdbuf->state.tiler_work_estimate)
          submit->tiler_work_estimate = UINT64_MAX;
