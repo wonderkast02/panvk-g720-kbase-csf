@@ -1,111 +1,49 @@
-name: Android NDK Build (Wrapper Variant)
+---
+name: PanVK G720 candidate source provenance
 
-on: [push]
+'on':
+  push:
+    branches:
+      - android-candidate-beta-1.9.4
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build-android-wrapper:
+  provenance:
+    name: Verify exact candidate source bytes
     runs-on: ubuntu-latest
-
-    strategy:
-          matrix:
-            build-type: [debugoptimized, release]
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
+      - name: Checkout candidate
         uses: actions/checkout@v4
 
-      - name: Patch anon_file.c for memfd_create
+      - name: Verify 12 validated driver/build-source paths
+        shell: bash
         run: |
-          # SDK 30+ has native memfd_create in NDK
-          sed -i 's/#if defined(HAVE_MEMFD_CREATE) \&\& !defined __TERMUX__/#if defined(HAVE_MEMFD_CREATE)/' src/util/anon_file.c
-          # sed -i '/with_gallium_drisw_kms = false/{n;s/if system_has_kms_drm/if false/;}' meson.build # Disables DRI in WSI
-          # sed -i "s/dep_libudev = dependency('libudev', required : false)/dep_libudev = null_dep/g" meson.build
+          set -euo pipefail
+          cat > expected.sha256 <<'EOF'
+          dedd6ed1c96b46829c1d52c395d79608528dc8ff120640dc64ae116f6c810038  src/panfrost/vulkan/panvk_device.h
+          da7bd6bcc7c2695284b4ec349bc259028a68a755ac0f7e1ae2f7b74efc463a43  src/util/u_gralloc/meson.build
+          4a15ec716e29bbaa9c103f5b249adee42937ca5812411b39114e3c2cd958ad8a  src/compiler/nir/nir_divergence_analysis.c
+          88d1e64c9c748fa414d1842271d9329ae04c747a69ceab4153a32cd023f3109c  src/panfrost/compiler/bifrost/bifrost_compile.c
+          9f0ef187bfdc927fae39b35801975861738f7aa48dec99a11f9d65322f41af47  src/panfrost/libpan/poly_tessellation.cl
+          4665be02a4fe3e3db578656d6f7352d64f7ccf2360cd86d10ca001912b777437  src/panfrost/vulkan/csf/panvk_vX_cmd_draw.c
+          8f7426025e31b131ef0b187fe98aff1d9a22025708eb629bf9658d7fa24ed6ec  src/panfrost/vulkan/csf/panvk_vX_gpu_queue.c
+          4b6b9ecc62263ea3a72dd0b1f2d6bb16e80a4b3e1debfacc3448c3604354db0c  src/panfrost/vulkan/panvk_cmd_draw.h
+          027e2dd516944869edc4ab46127e88e568c32d236310e2d4a5c44e2ec9743691  src/panfrost/vulkan/panvk_vX_physical_device.c
+          afa7b2ab7e7fc65514fd99240dd8f47aa565cbce42e19bc8a48de6d00a074886  src/poly/geometry.h
+          7cf289004480183564a34b1f2e80690c32a0c42be74cb0b9b81ba07aff7d9fdc  src/util/u_gralloc/u_gralloc_fallback.c
+          140b334c29a8999816e0084ce8b534b2171128a1da3de078e7b7509bf7431fe7  src/panfrost/lib/kmod/kbase_kmod.c
+          EOF
+          sha256sum -c expected.sha256
+          grep -Fq 'kbase_dev->dma_heap_fd = open(dma_heap, O_RDONLY | O_CLOEXEC);' src/panfrost/lib/kmod/kbase_kmod.c
+          grep -Fq '.fd_flags = O_RDWR | O_CLOEXEC,' src/panfrost/lib/kmod/kbase_kmod.c
+          grep -Fq '[P0A-V19-FULLPLANE]' src/util/u_gralloc/u_gralloc_fallback.c
+          grep -Fq 'AIMapper_loadIMapper' src/util/u_gralloc/u_gralloc_fallback.c
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Install Build Dependencies
+      - name: Non-release policy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-              build-essential \
-              llvm-20-dev \
-              libclang-20-dev \
-              libclc-20-dev \
-              libllvmspirvlib-20-dev \
-              libelf-dev \
-              spirv-tools \
-              bison \
-              flex \
-              libdrm-dev \
-              pkg-config
-          python -m pip install --upgrade pip
-          pip install mako PyYAML meson ninja packaging
-
-      # - name: Generate Shims
-      #   run: |
-      #     unzip shims.zip -d ./
-
-      - name: Generate Host Tools
-        run: |
-          meson setup build-host \
-              -Dplatforms=[] \
-              -Dgallium-drivers=[] \
-              -Dvulkan-drivers=[] \
-              -Dtools=panfrost \
-              -Dprecomp-compiler=enabled \
-              -Dinstall-precomp-compiler=true \
-              -Dllvm=enabled \
-              -Dmesa-clc=enabled -Dinstall-mesa-clc=true
-
-          ninja -C build-host src/compiler/clc/mesa_clc src/compiler/spirv/vtn_bindgen2 src/panfrost/clc/panfrost_compile
-
-          ln -sf "build-host/src/compiler/clc/mesa_clc" "build-host/src/compiler/clc/mesa-clc"
-          ln -sf "build-host/src/compiler/spirv/vtn_bindgen2" "build-host/src/compiler/spirv/vtn-bindgen2"
-          echo "$GITHUB_WORKSPACE/build-host/src/compiler/clc" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/build-host/src/compiler/spirv" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/build-host/src/panfrost/clc" >> $GITHUB_PATH
-
-      - name: Configure Meson
-        env:
-          PKG_CONFIG_LIBDIR: ${{ github.workspace }}/shims
-        run: |
-          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
-          export MESON_WORKING_DIR="$GITHUB_WORKSPACE"
-          envsubst < android.toml > android-cross.txt
-
-          meson setup build --reconfigure \
-              --cross-file android-cross.txt \
-              -Dbuildtype=${{ matrix.build-type }} \
-              -Dplatforms=android,x11 \
-              -Dandroid-stub=true \
-              -Dandroid-libbacktrace=disabled \
-              -Dplatform-sdk-version=30 \
-              -Dglx=disabled \
-              -Dgbm=disabled \
-              -Degl=disabled \
-              -Dopengl=false \
-              -Dgles1=disabled \
-              -Dgles2=disabled \
-              -Dglvnd=disabled \
-              -Dvalgrind=disabled \
-              -Dgallium-drivers= \
-              -Dshared-glapi=disabled \
-              -Dzstd=disabled \
-              -Dmesa-clc=system \
-              -Dprecomp-compiler=system \
-              -Dvulkan-drivers=panfrost \
-              -Dllvm=disabled -Dpanfrost-kmds=kbase,panthor
-
-      - name: Compile Project
-        run: |
-          meson compile -C build
-
-      - name: Upload Vulkan Wrapper Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: libvulkan_wrapper-aarch64-${{ matrix.build-type }}
-          path: build/src/panfrost/vulkan/libvulkan_panfrost.so
-          if-no-files-found: error
+          echo 'Source provenance only. This workflow intentionally does not publish a Vulkan driver binary.'
+          echo 'Community candidate 0.1.0-beta.1.9.4 remains HOLD.'
