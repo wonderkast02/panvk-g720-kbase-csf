@@ -501,7 +501,7 @@ kbase_kmod_get_flush_id(const struct pan_kmod_dev *dev)
 
 int
 kbase_kmod_csf_group_create(struct pan_kmod_dev *dev, uint32_t cs_queue_count,
-                            uint32_t *group_handle)
+                            uint32_t priority, uint32_t *group_handle)
 {
    STATIC_ASSERT(sizeof(union kbase_ioctl_cs_queue_group_create_1_18) == 40);
    STATIC_ASSERT(sizeof(union kbase_ioctl_cs_queue_group_create) == 112);
@@ -520,9 +520,7 @@ kbase_kmod_csf_group_create(struct pan_kmod_dev *dev, uint32_t cs_queue_count,
             .fragment_mask = ~0ull,
             .compute_mask = ~0ull,
             .cs_min = cs_queue_count,
-            .priority = 0, /* BASE_QUEUE_GROUP_PRIORITY_HIGH: resist CSG rotation so the
-                              * Pixel kbase off-slot heap-reclaim shrinker cannot
-                              * empty our tiler heaps under memory pressure. */
+            .priority = priority, /* Caller-specified */
             .tiler_max = 1,
             .fragment_max = 64,
             .compute_max = 64,
@@ -550,9 +548,7 @@ kbase_kmod_csf_group_create(struct pan_kmod_dev *dev, uint32_t cs_queue_count,
          .fragment_mask = ~0ull,
          .compute_mask = ~0ull,
          .cs_min = cs_queue_count,
-         .priority = 0, /* BASE_QUEUE_GROUP_PRIORITY_HIGH: resist CSG rotation so the
-                              * Pixel kbase off-slot heap-reclaim shrinker cannot
-                              * empty our tiler heaps under memory pressure. */
+         .priority = priority, /* Caller-specified: HIGH for graphics, MEDIUM for compute */
          .tiler_max = 1,
          .fragment_max = 64,
          .compute_max = 64,
@@ -849,7 +845,7 @@ kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
 
    STATIC_ASSERT(sizeof(struct base_fence) == 8);
    STATIC_ASSERT(sizeof(struct base_cqs_wait_operation_info) == 24);
-   STATIC_ASSERT(sizeof(struct base_kcpu_command) == 24);
+   STATIC_ASSERT(sizeof(struct base_kcpu_command) >= 24);
 
    if (!kbase_dev->is_csf || (addr & 15))
       return -1;
@@ -981,6 +977,487 @@ out:
    simple_mtx_unlock(&kbase_dev->kcpu.lock);
    return ret;
 }
+
+int
+kbase_kmod_mem_commit(struct pan_kmod_dev *dev, uint64_t gpu_addr,
+                      uint64_t pages)
+{
+   struct kbase_ioctl_mem_commit commit = {
+      .gpu_addr = gpu_addr,
+      .pages = pages,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_MEM_COMMIT, &commit)) {
+      mesa_loge("kbase: KBASE_IOCTL_MEM_COMMIT failed: %s",
+                strerror(errno));
+      return -1;
+   }
+
+   return 0;
+}
+
+/* === KCPU COMMANDS === */
+int
+kbase_kmod_csf_set_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
+                         uint64_t value)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf || (addr & 15))
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_cqs_set cqs_set = { .addr = addr };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_CQS_SET,
+      .info.cqs_set = { .objs = (uintptr_t)&cqs_set, .nr_objs = 1 },
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU CQS set unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   volatile uint64_t *cqs_ptr = (volatile uint64_t *)(uintptr_t)addr;
+   *cqs_ptr = value;
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_set_cqs_operation(struct pan_kmod_dev *dev, uint64_t addr,
+                                 uint64_t value, uint8_t operation)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf || (addr & 15))
+      return -1;
+
+   if (operation != BASEP_CQS_SET_OPERATION_ADD &&
+       operation != BASEP_CQS_SET_OPERATION_SET)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_cqs_set cqs_set = { .addr = addr };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_CQS_SET_OPERATION,
+      .info.cqs_set_operation = { .objs = (uintptr_t)&cqs_set, .nr_objs = 1 },
+   };
+
+   volatile uint64_t *cqs_ptr = (volatile uint64_t *)(uintptr_t)addr;
+   if (operation == BASEP_CQS_SET_OPERATION_ADD)
+      *cqs_ptr += value;
+   else
+      *cqs_ptr = value;
+
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU CQS set operation unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_fence_wait(struct pan_kmod_dev *dev, int64_t timeout_ns)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_fence fence = { .basep = { .fd = -1, .stream_fd = -1 } };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_FENCE_WAIT,
+      .info.fence = { .fence = (uintptr_t)&fence },
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue) ||
+       fence.basep.fd < 0) {
+      mesa_logd("kbase: KCPU fence wait unavailable: %s",
+                fence.basep.fd < 0 && errno == 0 ? "no sync fence" : strerror(errno));
+      goto disable;
+   }
+
+   ret = kbase_kcpu_poll_fence(fence.basep.fd, timeout_ns);
+   close(fence.basep.fd);
+
+   if (ret < 0) {
+      mesa_loge("kbase: KCPU fence wait failed: %s", strerror(errno));
+      goto disable;
+   }
+
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_error_barrier(struct pan_kmod_dev *dev)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_ERROR_BARRIER,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU error barrier unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_map_import(struct pan_kmod_dev *dev, uint64_t handle)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_import_info import_info = { .handle = handle };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_MAP_IMPORT,
+      .info.import = import_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU map import unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_unmap_import(struct pan_kmod_dev *dev, uint64_t handle)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_import_info import_info = { .handle = handle };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT,
+      .info.import = import_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU unmap import unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_unmap_import_force(struct pan_kmod_dev *dev, uint64_t handle)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_import_info import_info = { .handle = handle };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_UNMAP_IMPORT_FORCE,
+      .info.import = import_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU unmap import force unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_jit_alloc(struct pan_kmod_dev *dev,
+                         const struct base_jit_alloc_info *info,
+                         uint8_t count)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf || !info || count == 0)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_jit_alloc_info jit_info = {
+      .info = (uintptr_t)info, .count = count,
+   };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_JIT_ALLOC,
+      .info.jit_alloc = jit_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU JIT alloc unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_jit_free(struct pan_kmod_dev *dev,
+                        const uint8_t *ids, uint8_t count)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf || !ids || count == 0)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_jit_free_info jit_info = {
+      .ids = (uintptr_t)ids, .count = count,
+   };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_JIT_FREE,
+      .info.jit_free = jit_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU JIT free unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
+int
+kbase_kmod_csf_group_suspend(struct pan_kmod_dev *dev,
+                             uint64_t buffer, uint32_t size,
+                             uint8_t group_handle)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+   int ret = -1;
+
+   if (!kbase_dev->is_csf)
+      return -1;
+
+   simple_mtx_lock(&kbase_dev->kcpu.lock);
+   if (!kbase_dev->kcpu.valid)
+      goto out;
+
+   struct base_kcpu_command_group_suspend_info suspend_info = {
+      .buffer = buffer, .size = size, .group_handle = group_handle,
+   };
+   struct base_kcpu_command command = {
+      .type = BASE_KCPU_COMMAND_TYPE_GROUP_SUSPEND,
+      .info.suspend_buf_copy = suspend_info,
+   };
+   struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+      .addr = (uintptr_t)&command, .nr_commands = 1, .id = kbase_dev->kcpu.id,
+   };
+
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue)) {
+      mesa_logd("kbase: KCPU group suspend unavailable: %s", strerror(errno));
+      goto disable;
+   }
+
+   ret = 0;
+   goto out;
+
+disable:
+   kbase_dev->kcpu.valid = false;
+   if (kbase_dev->kcpu.fence_fd >= 0) {
+      close(kbase_dev->kcpu.fence_fd);
+      kbase_dev->kcpu.fence_fd = -1;
+   }
+   ret = -1;
+out:
+   simple_mtx_unlock(&kbase_dev->kcpu.lock);
+   return ret;
+}
+
 
 bool
 kbase_kmod_csf_has_error(const struct pan_kmod_dev *dev)
@@ -1275,7 +1752,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
    if (!dma_heap || !dma_heap[0])
       dma_heap = "/dev/dma_heap/system";
 
-   kbase_dev->dma_heap_fd = open(dma_heap, O_RDWR | O_CLOEXEC);
+   kbase_dev->dma_heap_fd = open(dma_heap, O_RDONLY | O_CLOEXEC);
    if (kbase_dev->dma_heap_fd < 0)
       mesa_logd("kbase: dma-heap unavailable at %s: %s", dma_heap,
                 strerror(errno));
@@ -1698,8 +2175,10 @@ kbase_kmod_bo_free(struct pan_kmod_bo *bo)
 static struct pan_kmod_bo *
 kbase_kmod_bo_import(struct pan_kmod_dev *dev, uint32_t handle, uint64_t size)
 {
-   mesa_loge("kbase: bo_import not yet implemented "
-             "(dma-buf import requires KBASE_IOCTL_MEM_IMPORT)");
+   /* kbase does not use GEM handles — import via fd path instead.
+    * The caller should use bo_import_fd for dma-buf import.
+    */
+   mesa_loge("kbase: bo_import(handle) not supported; use bo_import_fd");
    errno = ENOSYS;
    return NULL;
 }

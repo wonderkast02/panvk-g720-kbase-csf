@@ -511,6 +511,8 @@ get_device_heaps(struct panvk_physical_device *device,
    int host_coherent_not_cached_idx = -1;
    int host_cached_not_coherent_idx = -1;
 
+   /* Forzar 100% de la memoria como el blob propietario */
+   instance->drirc.misc.heap_memory_percent = 1.0f;
    const uint64_t heap_size =
       os_get_gpu_heap_size(instance->drirc.misc.heap_memory_percent,
                            &instance->drirc.misc.heap_memory_percent);
@@ -1576,9 +1578,9 @@ panvk_GetPhysicalDeviceMemoryProperties2(
           */
          p->heapUsage[0] = used;
 
-         /* Set the budget at 90% of available to avoid thrashing */
+         /* Budget al 100% como el blob propietario */
          p->heapBudget[0] = vk_physical_device_heap_budget_from_system(
-            &physical_device->vk, 0.9f, heap_size, used);
+            &physical_device->vk, 1.0f, heap_size, used);
 
          /* From the Vulkan 1.3.278 spec:
           *

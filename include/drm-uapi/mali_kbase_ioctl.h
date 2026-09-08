@@ -544,13 +544,114 @@ struct base_kcpu_command_cqs_wait_operation_info {
    __u32 inherit_err_flags;
 };
 
+struct base_cqs_set {
+   __u64 addr;
+};
+
+struct base_kcpu_command_cqs_set_info {
+   __u64 objs;
+   __u32 nr_objs;
+   __u32 padding;
+};
+
+struct base_kcpu_command_cqs_wait_info {
+   __u64 objs;
+   __u32 nr_objs;
+   __u32 inherit_err_flags;
+};
+
+struct base_kcpu_command_cqs_set_operation_info {
+   __u64 objs;
+   __u32 nr_objs;
+   __u32 padding;
+};
+
+/**
+ * struct base_kcpu_command_import_info - Imported buffer information
+ * @handle: Address of imported user buffer
+ */
+struct base_kcpu_command_import_info {
+   __u64 handle;
+};
+
+/**
+ * struct base_kcpu_command_group_suspend_info - Suspend buffer data
+ * @buffer:       Pointer to suspend buffer data
+ * @size:         Size of the buffer
+ * @group_handle: Handle of the group to suspend
+ * @padding:      Padding to 64 bits
+ */
+struct base_kcpu_command_group_suspend_info {
+   __u64 buffer;
+   __u32 size;
+   __u8 group_handle;
+   __u8 padding[3];
+};
+
+/**
+ * struct base_jit_alloc_info - JIT allocation request
+ * @gpu_alloc_addr:     GPU VA to write the JIT allocated address
+ * @va_pages:           Minimum number of virtual pages
+ * @commit_pages:       Minimum number of physical pages
+ * @extension:          Growth granularity in pages
+ * @id:                 Unique ID (non-zero)
+ * @bin_id:             JIT allocation bin
+ * @max_allocations:    Max allocations within the bin
+ * @flags:              BASE_JIT_ALLOC_VALID_FLAGS
+ * @padding:            Zero-initialized
+ * @usage_id:           Allocation reuse hint
+ * @heap_info_gpu_addr: GPU pointer to heap usage info
+ */
+struct base_jit_alloc_info {
+   __u64 gpu_alloc_addr;
+   __u64 va_pages;
+   __u64 commit_pages;
+   __u64 extension;
+   __u8 id;
+   __u8 bin_id;
+   __u8 max_allocations;
+   __u8 flags;
+   __u8 padding[2];
+   __u16 usage_id;
+   __u64 heap_info_gpu_addr;
+};
+
+struct base_kcpu_command_jit_alloc_info {
+   __u64 info;
+   __u8 count;
+   __u8 padding[7];
+};
+
+struct base_kcpu_command_jit_free_info {
+   __u64 ids;
+   __u8 count;
+   __u8 padding[7];
+};
+
+/**
+ * enum basep_cqs_set_operation - CQS Set operations
+ * @BASEP_CQS_SET_OPERATION_ADD: CQS Set operation for adding a value
+ * @BASEP_CQS_SET_OPERATION_SET: CQS Set operation for setting the value
+ */
+enum basep_cqs_set_operation {
+   BASEP_CQS_SET_OPERATION_ADD = 0,
+   BASEP_CQS_SET_OPERATION_SET = 1,
+};
+
 struct base_kcpu_command {
    __u8 type;
    __u8 padding[7];
    union {
       struct base_kcpu_command_fence_info fence;
+      struct base_kcpu_command_cqs_wait_info cqs_wait;
+      struct base_kcpu_command_cqs_set_info cqs_set;
       struct base_kcpu_command_cqs_wait_operation_info cqs_wait_operation;
-      __u64 padding[2];
+      struct base_kcpu_command_cqs_set_operation_info cqs_set_operation;
+      struct base_kcpu_command_import_info import;
+      struct base_kcpu_command_jit_alloc_info jit_alloc;
+      struct base_kcpu_command_jit_free_info jit_free;
+      struct base_kcpu_command_group_suspend_info suspend_buf_copy;
+      __u64 padding[3]; /* Ensure union is at least 24 bytes */
    } info;
 };
 
