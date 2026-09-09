@@ -781,8 +781,7 @@ kbase_subqueue_wait_seqno(struct panvk_gpu_queue *queue, uint32_t subqueue,
       uint32_t active = *(volatile uint32_t *)(output_page +
                                                CS_USER_IO_OUTPUT_CS_ACTIVE);
       if (prev_extract != extract || prev_seqno != cell->seqno) {
-         mesa_logi("kbase: running subqueue=%u, insert=%lu, extract=%lu, active=%u, target_insert=%lu, ls_copy=%lu, cell->seqno=%lu, target_seqno=%lu, progress=%x",
-            subqueue, insert, extract, active, target_insert, *ls_copy, cell->seqno, target_seqno, *stream_progress);
+         (void)active;
          prev_extract = extract;
          prev_seqno = cell->seqno;
       }
@@ -1018,15 +1017,31 @@ kbase_create_group(struct panvk_gpu_queue *queue)
    for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++)
       queue->subqueues[i].kbase.group_handle = UINT32_MAX;
 
+   /* Grupo 0 (gráficos): 2 streams (0=Vertex/Tiler, 1=Fragment) */
+   uint32_t group0_handle;
+   if (kbase_kmod_csf_group_create(dev->kmod.dev, 2, 0 /* HIGH */, &group0_handle)) {
+      result = panvk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
+                            "Failed to create graphics queue group");
+      goto err_destroy_group;
+   }
+   queue->subqueues[0].kbase.group_handle = group0_handle;
+   queue->subqueues[1].kbase.group_handle = group0_handle;
+   queue->group_handle = group0_handle;
+
+   /* Grupo 1 (compute): hasta 6 streams (2=Compute principal + 5 async).
+    * El firmware CSF soporta hasta 8 streams por grupo.
+    */
+   uint32_t group1_handle;
+   if (kbase_kmod_csf_group_create(dev->kmod.dev, 6, 1 /* MEDIUM */, &group1_handle)) {
+      result = panvk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
+                            "Failed to create compute queue group");
+      goto err_destroy_group;
+   }
+   for (uint32_t i = 2; i < 8; i++)
+      queue->subqueues[i].kbase.group_handle = group1_handle;
+
    for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++) {
       struct panvk_subqueue *subq = &queue->subqueues[i];
-
-      if (kbase_kmod_csf_group_create(dev->kmod.dev, 1,
-                                      &subq->kbase.group_handle)) {
-         result = panvk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
-                               "Failed to create a kbase queue group");
-         goto err_destroy_group;
-      }
 
       subq->kbase.ringbuf_bo =
          pan_kmod_bo_alloc(dev->kmod.dev, dev->kmod.vm, KBASE_RINGBUF_SIZE,
@@ -1071,8 +1086,10 @@ kbase_create_group(struct panvk_gpu_queue *queue)
                                subq->kbase.ringbuf_cpu, KBASE_RINGBUF_SIZE, "kbase_ringbuf");
       }
 
+      /* csi_index: 0-1 para Grupo 0, 0-5 para Grupo 1 */
+      uint32_t csi_index = (i < 2) ? i : (i - 2);
       subq->kbase.user_io = kbase_kmod_csf_queue_bind(
-         dev->kmod.dev, subq->kbase.group_handle, 0,
+         dev->kmod.dev, subq->kbase.group_handle, csi_index,
          subq->kbase.ringbuf_dev,
          KBASE_RINGBUF_SIZE);
       if (!subq->kbase.user_io) {
@@ -2288,6 +2305,16 @@ panvk_queue_submit_init_storage(
       struct panvk_cmd_buffer *cmdbuf = container_of(
          vk_submit->command_buffers[i], struct panvk_cmd_buffer, vk);
 
+
+      /*
+       * Tessellation command buffers currently carry mutable execution state.
+       * Serialize replay of simultaneous-use tessellation command buffers until
+       * that state is made per-execution.
+       */
+      if ((cmdbuf->flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT) &&
+          cmdbuf->state.gfx.tess.tes.shader)
+         submit->force_sync = true;
+
       if (UINT64_MAX - submit->tiler_work_estimate <
           cmdbuf->state.tiler_work_estimate)
          submit->tiler_work_estimate = UINT64_MAX;
@@ -2659,7 +2686,6 @@ kbase_wait_sync_targets(
          return result;
    }
 
-   mesa_logi("kbase_wait_sync_targets: targets = { %lu, %lu, %lu } succeeded", targets[0], targets[1], targets[2]);
    return VK_SUCCESS;
 }
 
