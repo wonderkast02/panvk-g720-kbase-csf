@@ -1,388 +1,316 @@
-# Mali-G720 Kbase/CSF + PanVK
+<div align="center">
 
-Projeto experimental para adaptar o Mesa/PanVK à Arm Mali-G720 utilizando diretamente a interface Kbase/CSF presente em kernels Android.
+# PanVK para Mali-G720
 
-O caminho principal atual é nativo: PanVK fala diretamente com Kbase/CSF. Wrappers, Wine, Box64 e DXVK continuam documentados como provas de conceito e ferramentas de validação, mas não fazem parte da arquitetura interna do driver.
+### Vulkan experimental sobre Kbase/CSF no Android
 
-> ⚠️ Projeto experimental e ainda em desenvolvimento. Risco real de GPU faults, travamentos ou necessidade de reinicialização durante testes.
+**`Vulkan → Mesa/PanVK → Kbase/CSF → Mali-G720`**
 
----
+<br>
 
+![Status](https://img.shields.io/badge/STATUS-EXPERIMENTAL-F59E0B?style=for-the-badge)
+![GPU](https://img.shields.io/badge/GPU-MALI--G720-7C3AED?style=for-the-badge)
+![API](https://img.shields.io/badge/API-VULKAN-E53935?style=for-the-badge)
+![Android](https://img.shields.io/badge/PLATFORM-ANDROID-3DDC84?style=for-the-badge)
 
-## 🚦 Estado atual — 2026-09-01
+<br>
 
-- **`main`**: landing/documentação pública.
-- **`ci`**: checkpoint histórico full-Mesa `0521a3257628e811cfead6b5a9753e9f705e2f31`; preservado.
-- **`android-candidate-beta-1.9.4`**: fonte congelada da release pública `0.1.0-beta.1.9.4`, derivada de `ci`.
+**PanVK nativo • Kbase/CSF • Android • Mali-G720**
 
-Release pública atual: **`0.1.0-beta.1.9.4`**, publicada como **GitHub Pre-release / Public Beta** para testes da comunidade. O artefato oficial é `PanVK-G720-0.1.0-beta.1.9.4.zip` (SHA-256 `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`). A release aponta para o source commit `3549264275c9663ed73e01d652f4c0d16f21df22`; a branch `ci` histórica permanece preservada.
-
-A composição nativa FullPlane + Kbase O_RDONLY foi qualificada. No caminho Winlator/Vortek registrado antes da publicação, o Gate A chegou ao primeiro `vkQueueSubmit` e terminou antes de acquire/present; o `_wassert` observado prova um `VkResult` não-zero no ponto assertado, mas **não prova sozinho um GPU fatal**.
-
-No MC8 autoritativo, `tessellationShader=true` foi validado no escopo dirigido e em CTS focado. Isso **não é** uma alegação de conformidade Vulkan.
-
-**[⬇️ Release 0.1.0-beta.1.9.4](https://github.com/wonderkast02/panvk-g720-kbase-csf/releases/tag/0.1.0-beta.1.9.4)**
-
-**Community:** [🧪 testing guide](docs/COMMUNITY_TESTING.md) · [🤝 contributing](CONTRIBUTING.md) · [🔐 security](SECURITY.md)
-
-Documentação: [status](docs/STATUS.md) · [releases](docs/RELEASES.md) · [proveniência](docs/PROVENANCE.md) · [validação](docs/VALIDATION.md) · [versionamento](docs/VERSIONING.md)
-
-> Nunca converter `DRM_FORMAT_MOD_INVALID` em `DRM_FORMAT_MOD_LINEAR` por suposição.
+</div>
 
 ---
 
-## ✅ Hardware / Kernel (validação)
+> [!WARNING]
+> **Projeto experimental.** Testes podem causar travamentos de aplicações, GPU faults ou exigir reinicialização do dispositivo.
+>
+> Este projeto **não declara conformidade Vulkan**.
 
-Hardware validado:
-- SoC: MediaTek MT6899
-- GPU: Mali-G720 MC8
-- GPU ID: `0xc8700010`
-- Vendor ID: `0x13b5`
-- Kbase: r49p1
-- UK version: 1.30
-- Device: `/dev/mali0`
-- Firmware CSF: `mali_csffw.bin`
+# 🚀 Estado atual
 
-Observações:
-- A UAPI Kbase utilizada pelo Mesa foi comparada com o driver vendor e os ioctl(s) relevantes foram validados.
-- Não tratar incompatibilidade de ioctl como hipótese atual — essa hipótese já foi eliminada.
+O **Drive G720 / PanVK** adapta o Mesa/PanVK para executar diretamente sobre a **Arm Mali-G720**, usando a interface **Kbase/CSF** disponível em kernels Android.
 
-Principais ioctls / operações confirmadas:
-- ✅ VERSION_CHECK_CSF
-- ✅ SET_FLAGS
-- ✅ GPUPROPS
-- ✅ CS_GET_GLB_IFACE
-- ✅ MEM_ALLOC_EX / BASE_MEM_SAME_VA
-- ✅ mmap de BO
-- ✅ leitura / escrita CPU ↔ BO
-- ✅ MEM_QUERY / MEM_COMMIT
-- ✅ criação de CSG
-- ✅ registro / bind / kick de filas CSF
-- ✅ execução real de comandos na GPU
+A linha atual de desenvolvimento concluiu o **fechamento funcional do Geometry Shader**. Isso é posterior à beta pública atual e **não cria automaticamente uma nova release**.
 
----
+| | Estado |
+|---|---|
+| **Linha de desenvolvimento** | Geometry Shader funcionalmente fechado ✅ |
+| **Beta pública atual** | `0.1.0-beta.1.9.4` |
+| **GPU principal de validação** | Mali-G720 MC8 |
+| **Foco atual** | Consolidação, compatibilidade, regressões e otimização |
 
-## 🔧 Correção CSF específica para Mali-G720 (mantida)
+## ⬇️ Beta pública
 
-Problema observado originalmente:
-- O backend assumia um valor fixo de work registers:
-  ```c
-  .cs_reg_count = 96,
-  ```
-- Isso causava abort com:
-  ```
-  overflowed register file
-  ```
+<div align="center">
 
-Correção aplicada (conforme já documentado):
-- Usar a quantidade real reportada pela interface CSF:
-  ```c
-  .cs_reg_count = (stream_features & 0xff) + 1,
-  ```
-- Também ajustar reserva de registradores não preservados:
-  ```c
-  .nr_kernel_registers =
-     MAX2(csif_info->unpreserved_cs_reg_count, 4)
-  ```
+### [Baixar PanVK G720 0.1.0-beta.1.9.4](https://github.com/wonderkast02/panvk-g720-kbase-csf/releases/tag/0.1.0-beta.1.9.4)
 
-Na Mali-G720 o campo `stream_features` reportou um valor que implica ~114 registradores e essa correção eliminou o abort "overflowed register file" observado anteriormente.
+</div>
+
+> A beta pública pode ficar atrás da linha atual de desenvolvimento.
+>
+> Uma nova beta só é publicada após qualificação específica e decisão explícita de release.
 
 ---
 
-## 🧪 PanVK nativo (estado validado)
+# ✅ Recursos validados
 
-Resumo do que já foi validado no PanVK AArch64 nativo sobre Kbase/CSF:
-- ✅ vulkaninfo concluído
-- ✅ enumeração da Mali-G720
-- ✅ compute (workloads compute executando)
-- ✅ graphics pipeline
-- ✅ render offscreen (triângulo)
-- ✅ readback para CPU funcionando
-- ✅ texture sampling básico
-- ✅ depth D32
-- ✅ alpha blending
-- ✅ stencil D24S8
-- ✅ MSAA 4x + resolve
-- ✅ testes repetidos / stress
-- ✅ swapchain Vulkan X11 funcionando
-- ✅ teste de ~300 frames
-- ✅ vkcube via Termux:X11
+| Recurso | Estado |
+|---|:---:|
+| Kbase / CSF userspace | ✅ |
+| Inicialização Vulkan | ✅ |
+| Compute | ✅ |
+| Graphics pipeline | ✅ |
+| Render offscreen | ✅ |
+| CPU readback | ✅ |
+| Texture sampling | ✅ |
+| Depth / Stencil / Blending | ✅ |
+| MSAA + Resolve | ✅ |
+| X11 WSI / Swapchain | ✅ |
+| Tessellation | ✅ |
+| Geometry Shader | ✅ |
+| Tessellation + GS | ✅ |
+| Transform Feedback + GS | ✅ |
+| Layered GS | ✅ |
+| Box64 / Wine Vulkan | 🧪 |
+| DXVK / D3D11 | 🧪 |
+| Conformidade Vulkan | ❌ |
 
-Observação de arquitetura:
-Vulkan application
- -> Mesa/PanVK
- -> Kbase backend
- -> Kbase CSF
- -> Mali-G720
+**✅ Validado** · **🧪 Experimental** · **❌ Não declarado**
 
-Importante:
-- O PanVK usa diretamente `/dev/mali0`.
-- Isto é um experimento funcional; NÃO declarar conformidade Vulkan ou suporte completo.
+Os resultados são válidos para o escopo e hardware efetivamente testados. Consulte [VALIDATION](docs/VALIDATION.md) antes de transformar qualquer resultado em claim de suporte geral.
 
 ---
 
-## 🧩 Box64 / Wine (experimentação)
+# 📱 Plataforma validada
 
-Validações realizadas via Box64:
-- ✅ Execução de binário Linux x86_64 via Box64.
-- ✅ Vulkan x86_64 através do Box64.
-- ✅ Swapchain Vulkan X11 x86_64 via Box64.
-- ✅ Wine amd64/WOW64 executando através do Box64.
-- ✅ Aplicação Windows PE usando Vulkan (pipeline testado).
+A plataforma principal usada como referência autoritativa de desenvolvimento e validação é:
 
-Caminho verificado (Windows Vulkan via Box64):
-Windows PE
- -> Wine (winevulkan)
- -> Box64
- -> Vulkan loader AArch64
- -> PanVK
- -> Kbase CSF
- -> Mali-G720
+| Componente | Configuração |
+|---|---|
+| **SoC** | MediaTek MT6899 |
+| **GPU** | Mali-G720 MC8 |
+| **GPU ID** | `0xc8700010` |
+| **Vendor ID** | `0x13b5` |
+| **Kernel driver** | Kbase / CSF |
+| **Device node** | `/dev/mali0` |
+| **Sistema** | Android |
 
-Aviso:
-- Não afirmar que “todos os jogos funcionam”. São provas de conceito e testes limitados.
+> Outras variantes da Mali-G720 continuam experimentais até receberem validação independente.
+
+Detalhes do bring-up, UAPI e correções CSF: **[KBASE_CSF](docs/KBASE_CSF.md)**.
 
 ---
 
-## 🔬 DXVK (seção separada)
+# 🧠 Arquitetura
 
-DXVK de referência usado: v3.0.2
+```text
+┌─────────────────────────┐
+│    Aplicação Vulkan     │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│      Mesa / PanVK       │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│     Backend Kbase       │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│        CSF / KMD        │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│      Mali-G720 GPU      │
+└─────────────────────────┘
+```
 
-DXVK stock:
-- ❌ O DXVK stock atualmente rejeita o adapter PanVK porque faltam features Vulkan exigidas:
-  - geometryShader
-  - multiViewport
-  - shaderClipDistance
-  - shaderCullDistance
-  - textureCompressionBC
+O caminho principal é **PanVK nativo sobre Kbase/CSF**.
 
-Importante: NÃO afirmar que essas features já foram implementadas no PanVK.
+**Winlator, Vortek, Wine, Box64 e DXVK não fazem parte da arquitetura interna do driver.** Eles são usados como camadas de integração, compatibilidade e validação.
 
-DXVK G720 LAB (patch experimental):
-- Existe um patch experimental chamado "G720 LAB" que contorna a rejeição inicial do adaptador apenas para investigação.
-- Esse patch NÃO implementa as features faltantes; ele ignora a checagem inicial para permitir investigação experimental.
-
-Com o G720 LAB observou-se:
-- ✅ criação de dispositivo D3D11 (feature level 10_1) em contexto experimental
-- ✅ render target offscreen (clear / draw)
-- ✅ copy / map / readback
-- ✅ execução de shader DXBC (conversão DXBC -> SPIR-V pelo DXVK)
-- ✅ execução do shader pelo PanVK
-- ✅ Draw(3) + readback correto
-- ✅ swapchain em PresentImmediate (~600 frames testados)
-
-Observações:
-- FIFO / syncInterval=1 apresentou bloqueio durante testes; Immediate / Present(0) funcionou no experimento.
-- NÃO atribuir definitivamente esse problema ao PanVK sem investigação adicional.
-- O G720 LAB é uma ferramenta de investigação, não uma solução final.
-
----
-
-## 🧾 Texture compression (BC) — resultado da investigação
-
-Medida observada:
-- Valor real observado de TEXTURE_FEATURES_0: `0xc7fe001e`
-- Máscara esperada para formatos BC: `0x0001ff80`
-- Interseção observada: `0x00000000`
-
-Conclusão:
-- A Mali-G720, no caminho Kbase/CSF observado, NÃO anuncia suporte nativo a BC1–BC7 via esses texture feature bits.
-- O fato do GameNative/driver proprietário anunciar `textureCompressionBC` não prova suporte BC nativo do hardware — pode haver uma camada de wrapper ou emulação.
-- NÃO forçar `textureCompressionBC=true` no PanVK sem implementação real e verificação.
+Detalhes: **[Arquitetura](docs/ARCHITECTURE.md)**.
 
 ---
 
-## 🎮 GameNative / wrapper (controle positivo)
+# 🎮 DXVK & Winlator
 
-No mesmo hardware, abordagens proprietárias (GameNative / Winlator / driver vendor) conseguem executar workloads que anunciam:
-- geometryShader
-- tessellationShader
-- multiViewport
-- shaderClipDistance
-- shaderCullDistance
-- textureCompressionBC
+A compatibilidade com workloads Windows continua sendo uma frente ativa.
 
-Esses caminhos frequentemente usam um wrapper/proprietary driver que pode:
-- virtualizar/transformar features
-- emular BCn (decompress/transcode via CPU ou compute)
-- remover/baixar (lower) ClipDistance/CullDistance
-- transformar SPIR-V
+Já existem testes controlados com:
 
-Análise do wrapper público estudado:
-- Projeto: leegao/bionic-vulkan-wrapper
-- O wrapper público implementa, entre outras coisas:
-  - virtualização de algumas Vulkan features
-  - emulação de BCn (BC1/BC2/BC3/BC4/BC5/BC6H/BC7)
-  - decompression/transcode por CPU ou compute
-  - transformação e lowering de SPIR-V relacionados a Clip/Cull
-- NÃO assumir que o wrapper implementa geometry shader ou multiViewport completos sem evidências técnicas suficientes.
+**Winlator** · **Vortek** · **Wine** · **Box64** · **DXVK**
+
+Isso **não representa compatibilidade universal com jogos**. Uma aplicação iniciar ou renderizar parcialmente não é suficiente para declarar suporte geral.
+
+### Foco pós-GS
+
+- consolidar a source tree;
+- melhorar reprodutibilidade;
+- fortalecer Winlator / Vortek;
+- reavaliar DXVK;
+- ampliar regressões e CTS focado;
+- otimizar desempenho somente após estabilidade funcional.
+
+Histórico detalhado de DXVK, Wine/Box64, BCn e wrappers: **[COMPATIBILITY](docs/COMPATIBILITY.md)**.
 
 ---
 
-## 🧩 Wrapper glibc experimental
+# 🧪 Validação & documentação
 
-Objetivo:
-Portar o bionic-vulkan-wrapper para AArch64 com glibc para compor esta cadeia experimental:
-DXVK / Vulkan loader
- -> libvulkan_wrapper.so
- -> libvulkan_panfrost.so
- -> Kbase
- -> Mali-G720
+| Documento | Conteúdo |
+|---|---|
+| **[STATUS](docs/STATUS.md)** | Estado técnico atual |
+| **[VALIDATION](docs/VALIDATION.md)** | Testes, escopo e evidências |
+| **[PROVENANCE](docs/PROVENANCE.md)** | Proveniência e autoridade |
+| **[ARCHITECTURE](docs/ARCHITECTURE.md)** | Arquitetura do projeto |
+| **[KBASE_CSF](docs/KBASE_CSF.md)** | UAPI, hardware e bring-up Kbase/CSF |
+| **[COMPATIBILITY](docs/COMPATIBILITY.md)** | Winlator, DXVK, Wine, Box64 e wrappers |
+| **[ROADMAP](docs/ROADMAP.md)** | Próximas etapas |
+| **[HISTORY](docs/HISTORY.md)** | Marcos técnicos |
+| **[RELEASES](docs/RELEASES.md)** | Releases públicas |
+| **[VERSIONING](docs/VERSIONING.md)** | Política de versionamento |
 
-Progresso e problemas corrigidos (Bionic → glibc):
-- ✅ Android availability macros em stubs
-- ✅ C11 threads / HAVE_THRD_CREATE
-- ✅ once_flag
-- ✅ memfd_create
-- ✅ getrandom
-- ✅ correções de const correctness com Clang 21
-- ✅ cnd_monotonic
-- ✅ u_printf
-- ✅ remoção do WSI AHardwareBuffer no build X11
-- ✅ flags fcntl/open
-- ✅ buffer_handle_t
-- ✅ getprogname → program_invocation_short_name
-- ✅ size_t em spirv_edit.h
+### Princípio de desenvolvimento
 
-Estado histórico:
-- O snapshot preservado em `porting/g720-wrapper-glibc-snapshot/` representa um checkpoint intermediário do port Bionic → glibc.
-- Nesse checkpoint, a compilação havia chegado ao link final de `libvulkan_wrapper.so`, ainda bloqueado por passes customizados ausentes no SPIRV-Tools.
-- O trabalho com o wrapper foi usado como PoC para estudar o caminho Vulkan e comparar features virtualizadas.
-- O caminho principal atual não depende mais desse wrapper: PanVK executa diretamente sobre Kbase/CSF.
+> **Runtime > suposição estática**
+>
+> **Evidência bruta > classificador**
 
-O snapshot permanece no repositório para preservar o histórico da investigação, não como arquitetura recomendada atualmente.
+Build concluído **não significa automaticamente runtime aprovado**. Falha de tooling, transporte ou instrumentação também não deve ser convertida automaticamente em falha do driver.
 
 ---
 
-## 🧪 PoCs / marcos históricos preservados
+# 🗺️ Roadmap
 
-As provas de conceito abaixo registram etapas diferentes do desenvolvimento. Elas não significam conformidade Vulkan nem compatibilidade geral com jogos.
+### Base gráfica
 
-1. **Kbase/CSF bring-up**
-   - comunicação com `/dev/mali0`
-   - UAPI e propriedades da GPU
-   - memória e BOs
-   - CSG, filas CSF e execução real na GPU
+- [x] Kbase / CSF bring-up
+- [x] Inicialização Vulkan
+- [x] Compute
+- [x] Graphics
+- [x] WSI / Swapchain
+- [x] Tessellation
+- [x] Geometry Shader
 
-2. **PanVK Vulkan nativo**
-   - vulkaninfo
-   - compute
-   - graphics pipeline
-   - triângulo offscreen + readback
-   - texture sampling
-   - depth/stencil
-   - blending
-   - MSAA + resolve
-   - stress
+### Próxima fase
 
-3. **Termux:X11 / WSI**
-   - swapchain Vulkan ARM64
-   - vkcube
-   - teste prolongado de aproximadamente 300 frames
+- [ ] Consolidar a árvore pós-GS
+- [ ] Reforçar reprodutibilidade de builds
+- [ ] Ampliar Winlator / Vortek
+- [ ] Reavaliar DXVK
+- [ ] Expandir regressões e CTS focado
+- [ ] Validar outros dispositivos Mali-G720
+- [ ] Trabalhar desempenho e otimizações
 
-4. **Box64 / Wine Vulkan**
-   - execução x86_64
-   - Wine amd64/WOW64
-   - aplicação Windows chegando ao PanVK por Wine/Box64
-
-5. **DXVK G720 LAB**
-   - criação experimental de dispositivo D3D11
-   - clear/draw
-   - copy/map/readback
-   - DXBC → SPIR-V
-   - Draw(3)
-   - PresentImmediate
-
-6. **Wrapper Bionic → glibc**
-   - PoC histórica para estudar a rota indireta:
-     `wrapper → PanVK → Kbase/CSF → G720`
-   - checkpoint preservado em `porting/g720-wrapper-glibc-snapshot/`
-
-7. **Transição para PanVK nativo**
-   - remoção do wrapper do caminho principal
-   - caminho atual:
-     `Vulkan → PanVK → Kbase/CSF → Mali-G720`
-
-8. **Tessellation compiler bring-up**
-   - VS → COMPUTE
-   - TCS → COMPUTE
-   - TES → VERTEX
-   - metadata, binding/state, descriptors e poly sysvals
-
-9. **Tessellation precompiled kernels**
-   - `panlib_prefix_sum_tess`
-   - `panlib_tess_isoline`
-   - `panlib_tess_tri`
-   - `panlib_tess_quad`
-
-10. **Tessellation direct-runtime — validação em hardware**
-   - software VS → TCS
-   - libpoly COUNT → prefix sum → WITH_COUNTS
-   - geração do indexed indirect draw
-   - TES/IDVS → rasterização
-   - readback semântico 4096/4096 pixels
-   - `gl_TessCoord` assimétrico e TES → FS user varying
-   - triangles / quads / isolines
-   - equal spacing e caminhos fractional-even/fractional-odd validados
-   - checkpoint de código: `0521a3257628`
-   - `tessellationShader=true` foi posteriormente validado na linha MC8 autoritativa; ver `docs/VALIDATION.md`
+Roadmap detalhado: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ---
 
-## 🧬 Tessellation — estado MC8 validado
+# 🤝 Comunidade
 
-A linha MC8 autoritativa expõe `tessellationShader=true` e validou o caminho PanVK/libpoly em hardware real. Entre os oracles acumulados estão Direct/P7/Replay 9/9, common-edge TRI 6/6, common-edge QUAD 6/6, winding 48/48, sync64 64/64, DYN256 19/19, stress até 8192 triangle patches e duas repetições da fatia CTS com 160 PASS / 954 NOT_SUPPORTED / 0 FAIL / 0 OTHER.
+Quer testar, reportar problemas ou contribuir?
 
-Esses resultados são específicos do escopo e hardware testados. Eles não declaram conformidade Vulkan nem suporte universal a todo Mali-G720.
+**[🧪 Guia de testes](docs/COMMUNITY_TESTING.md)** · **[Contribuir](CONTRIBUTING.md)** · **[Segurança](SECURITY.md)** · **[Licenciamento](LICENSING.md)**
 
----
+Ao reportar um problema, inclua sempre que possível:
 
-## 🛠️ Próximos passos (priorizados)
+`Dispositivo` · `GPU` · `Kernel/Kbase` · `Driver` · `Runtime` · `Logs`
 
-1. Fechar causalmente o retorno do primeiro submit/fence no caminho Winlator/Vortek do `0.1.0-beta.1.9.4`.
-2. Só depois repetir Gate A; Gate B, soak e DXVK/D3D11 dependem desse fechamento.
-3. Ampliar regressões/CTS e validação em outros G720 sem transformar MC8 em claim universal.
-4. Continuar `geometryShader` e `multiViewport` em etapas independentes.
-5. Manter `textureCompressionBC` desativado sem implementação real.
-6. Preservar hashes/proveniência e a separação entre `main`, `ci` e `android-candidate-beta-1.9.4`.
-
-A linha candidata não inclui os deltas experimentais Beta2/Beta3.
+Resultados completos e reproduzíveis ajudam muito mais do que apenas informar que algo “funcionou” ou “não funcionou”.
 
 ---
 
-## 🙏 Créditos (preservados)
+# ⚠️ Limitações
 
-- Leegao — https://github.com/leegao  
-  Autor do fork usado como base: https://github.com/leegao/mesa-funnymdzz
-
-- funnymdzz — https://github.com/funnymdzz  
-  Trabalho base: https://github.com/funnymdzz/mesa
-
-- Icecream95  
-  Pelo trabalho pioneiro relacionado ao Panfork/Panfrost e à engenharia reversa de GPUs Mali e Kbase.
-
-- Mesa / Panfrost / PanVK  
-  Pelo desenvolvimento open-source da infraestrutura e do compilador utilizados neste projeto.
-
-- Saikatsaha1996 / mesa-Panfrost-G610  
-  Pelas referências e contribuições comunitárias envolvendo Mali G610/G710 e CSF.
-
-- wonderkast02  
-  Desenvolvimento e validação em:
-  - MediaTek MT6899
-  - Mali-G720
-  - Kbase r49p1
-  - Engenharia reversa do driver vendor
-  - Validação da UAPI e testes CSF
-  - Adaptação do backend Kbase
-  - Correção do CS register count para G720
-  - Testes e documentação
-
+- não há declaração de conformidade Vulkan;
+- não há garantia de suporte universal a toda variante Mali-G720;
+- não há garantia de compatibilidade com todos os jogos;
+- não há garantia de compatibilidade com todas as versões do DXVK;
+- features presentes em drivers proprietários ou wrappers não são automaticamente consideradas suporte nativo;
+- builds de desenvolvimento podem regredir;
+- resultados obtidos em um dispositivo não devem ser generalizados automaticamente para todo hardware Mali-G720.
 
 ---
 
-## ⚠️ Aviso final
+<div align="center">
 
-Projeto experimental de pesquisa e engenharia reversa.
+# Drive G720 / PanVK
 
-O código e as ferramentas aqui documentadas podem causar GPU faults, travamentos ou exigir reinicialização durante o desenvolvimento. Testes em hardware real devem ser feitos com cautela.
+### **Vulkan aberto na Mali-G720**
+
+`Mali-G720` • `PanVK` • `Kbase/CSF` • `Android`
+
+<br>
+
+**Hardware real • Depuração causal • Evidência reproduzível**
+
+</div>
+
+---
+
+# 💙 Créditos & Agradecimentos
+
+O **Drive G720 / PanVK** existe graças a uma ampla base de software livre, engenharia reversa, pesquisa aberta e testes comunitários.
+
+## 🧩 Bases e contribuidores
+
+**[Leegao](https://github.com/leegao)** — pelo `mesa-funnymdzz`, pelo `bionic-vulkan-wrapper` e por trabalho público utilizado como base ou referência durante a integração PanVK/Kbase.
+
+**[funnymdzz](https://github.com/funnymdzz)** — por trabalho-base e referências utilizadas na evolução do caminho PanVK/Kbase.
+
+**Icecream95 / Panfork** — pelo trabalho pioneiro no ecossistema Panfrost/Panfork, engenharia reversa de GPUs Mali e infraestrutura relacionada.
+
+**Saikatsaha1996** — por referências e experimentação comunitária envolvendo GPUs Mali modernas, CSF e Panfrost/PanVK.
+
+**wonderkast02 / Drive G720** — pela integração, pesquisa, desenvolvimento, qualificação e validação específica do caminho Mali-G720 / Kbase / CSF deste projeto.
+
+## 🌐 Upstream
+
+Agradecimento aos projetos e comunidades:
+
+**Mesa 3D** · **Panfrost** · **PanVK** · **Panfork**
+
+e aos seus mantenedores e contribuidores.
+
+## 🔺 Arm & Vulkan
+
+**Arm** — arquitetura Mali, Kbase, CSF e interfaces utilizadas pelo projeto.
+
+**Khronos Group** — Vulkan, SPIR-V e infraestrutura de testes/conformidade do ecossistema Vulkan.
+
+## 🎮 Compatibilidade & validação
+
+Projetos usados em diferentes etapas de integração, diagnóstico ou validação:
+
+**DXVK** · **Wine** · **Box64** · **Winlator** · **Vortek**
+
+## 🛠️ Ferramentas & infraestrutura
+
+**Termux** · **Termux:X11** · **Android / AOSP / Bionic** · **Android NDK** · **LLVM / Clang** · **Meson** · **Ninja** · **SPIRV-Tools** · **VK-GL-CTS**
+
+## 🔬 Referências técnicas históricas
+
+Entre os projetos e forks consultados ou usados como referência ao longo da pesquisa estão:
+
+- `leegao/bionic-vulkan-wrapper`
+- `funnymdzz/mali_fxxker`
+- `Saikatsaha1996/mesa-Panfrost-G610`
+- `yoshi3jp/android_kernel_samsung_a25ex_mt6835`
+- `nangitagamer777-art/Panvk_Kmod`
+- forks e builds experimentais de DXVK usados durante investigação
+
+A presença nesta lista **não significa necessariamente que código desses projetos esteja presente na build atual**.
+
+## 🧑‍💻 Testadores & comunidade
+
+Agradecimento a todos que contribuíram com testes em hardware Mali, logs, dumps, reproduções, descoberta de regressões, comparação entre ambientes, feedback, documentação, pesquisa e discussão técnica.
+
+> **Cada projeto, arquivo e componente mantém seus próprios autores, copyrights e termos de licença.**
+>
+> A presença nesta seção não implica afiliação, patrocínio ou endosso oficial ao Drive G720.

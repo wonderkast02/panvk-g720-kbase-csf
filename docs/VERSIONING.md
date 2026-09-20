@@ -1,11 +1,24 @@
-# Versioning policy
+# Política de versionamento
 
-Current public beta release: **`0.1.0-beta.1.9.4`**.
+A release pública atual é **`0.1.0-beta.1.9.4`**.
 
-It is intentionally published as a **GitHub Pre-release**, not as a stable/latest production release. The release tag is bound to source commit `3549264275c9663ed73e01d652f4c0d16f21df22`.
+Ela é uma **GitHub Pre-release**, não uma release estável.
 
-Internal/debug/test artifacts after this release use descriptive technical names. A new public beta version is assigned only when a new build is explicitly selected for community distribution; existing public release bytes are never silently replaced under the same version.
+## Regras
 
-Historical Beta1/Beta2/Beta3 experimental artifacts are not treated as complete descendants of Alpha2 FullPlane: those builds were made after canonical source had been restored to the pre-FullPlane baseline.
+- artefatos internos/debug/test após a beta usam nomes técnicos descritivos;
+- número de beta pública só é atribuído quando um build é explicitamente selecionado para distribuição;
+- uma atualização de README/docs não altera versão pública;
+- fechar uma feature em desenvolvimento não cria automaticamente release;
+- bytes já publicados nunca são substituídos silenciosamente sob a mesma versão;
+- se os bytes do driver/pacote mudarem, uma futura publicação deve receber nova identidade;
+- tags e hashes publicados permanecem imutáveis;
+- não criar `beta.2`, `beta.3` ou qualquer sequência pública apenas para numerar trabalho interno.
 
-Release assets must retain their recorded checksums. If driver bytes change, the public version must change as well.
+## Binding da beta atual
+
+- tag: `0.1.0-beta.1.9.4`
+- source commit: `3549264275c9663ed73e01d652f4c0d16f21df22`
+- package SHA-256: `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`
+
+O desenvolvimento pós-beta é deliberadamente separado dessa identidade até uma nova decisão de release.

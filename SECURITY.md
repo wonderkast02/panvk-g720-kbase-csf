@@ -1,15 +1,34 @@
-# Security Policy
+# Política de segurança
 
-PanVK G720 is experimental low-level GPU-driver work. Driver, kernel-interface and memory-management defects can have security or stability consequences.
+O PanVK G720 é trabalho experimental de baixo nível envolvendo driver GPU, interfaces de kernel e gerenciamento de memória. Defeitos podem ter impacto em estabilidade ou segurança.
 
-## Reporting a vulnerability
+## Reportando uma vulnerabilidade
 
-Use GitHub's **private vulnerability reporting** / Security Advisories for security-sensitive findings. Do not publish exploit details, credentials, private logs, device identifiers, or other sensitive information in a public issue.
+Use o **Private Vulnerability Reporting / Security Advisories** do GitHub para descobertas sensíveis.
 
-If the Security tab does not offer a private reporting form, open a minimal public issue requesting a private maintainer contact **without disclosing the vulnerability details**.
+Não publique em issue pública:
 
-## Scope
+- exploit funcional;
+- credenciais;
+- tokens;
+- chaves;
+- dumps contendo dados pessoais;
+- identificadores privados desnecessários;
+- detalhes que aumentem desnecessariamente o risco antes da triagem.
 
-Security reports for the current public beta and current repository source are accepted. Historical experiments are handled on a best-effort basis.
+Se a aba Security não oferecer canal privado, abra apenas uma issue mínima pedindo contato privado, sem divulgar os detalhes técnicos sensíveis.
 
-This policy does not promise a specific remediation timeline and does not change the experimental/pre-release status of the driver.
+## Escopo
+
+São aceitos relatórios relacionados a:
+
+- release pública atual;
+- código atual do repositório;
+- interfaces Kbase/CSF usadas pelo projeto;
+- regressões com impacto de segurança/estabilidade.
+
+Experimentos históricos são tratados em best-effort.
+
+## Expectativas
+
+O projeto é experimental e não promete prazo fixo de correção. A existência desta política não transforma builds beta em software estável ou suportado para uso crítico.

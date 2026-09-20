@@ -1,51 +1,65 @@
-# Community testing guide
+# Guia de testes da comunidade
 
-## Current public beta
+## Beta pública atual
 
-Release: `0.1.0-beta.1.9.4`
+Release: **`0.1.0-beta.1.9.4`**
 
-Official package:
+Pacote oficial:
 
 `PanVK-G720-0.1.0-beta.1.9.4.zip`
 
-Expected SHA-256:
+SHA-256 esperado:
 
 `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`
 
-Verify before testing:
+Verifique antes do teste:
 
 ```sh
 sha256sum PanVK-G720-0.1.0-beta.1.9.4.zip
 ```
 
-Do not repack or edit the ZIP when producing a result intended to describe this release.
+Não repacke ou edite o ZIP quando o objetivo for produzir um resultado atribuível à release oficial.
 
-## Minimum report
+## Relatório mínimo
 
-Include:
+Inclua:
 
-1. device model;
+1. modelo do dispositivo;
 2. SoC;
-3. GPU model/core count when known;
-4. Android version;
-5. kernel/Kbase version when known;
-6. exact release tag and ZIP SHA-256;
-7. runtime path (native / Winlator / Vortek / Wine / Box64);
-8. wrapper version when applicable;
-9. DXVK/VKD3D version when applicable;
-10. application/game;
-11. exact reproduction steps;
-12. logs and timestamps;
-13. whether the device rebooted, the application aborted, or only the test process failed.
+3. GPU e quantidade de cores quando conhecida;
+4. versão do Android;
+5. kernel/Kbase quando conhecido;
+6. tag exata do PanVK;
+7. SHA-256 exato do pacote;
+8. runtime: native / Winlator / Vortek / Wine / Box64;
+9. versão do wrapper, quando aplicável;
+10. DXVK/VKD3D, quando aplicável;
+11. aplicação/jogo;
+12. passos exatos para reprodução;
+13. logs com timestamps;
+14. se houve reboot, abort da aplicação, hang, device lost ou apenas falha do processo de teste.
 
-## Interpretation
+## Builds de desenvolvimento
 
-An application assertion or non-zero `VkResult` does not by itself prove a GPU fatal. Preserve the original logs and report what was directly observed.
+Se um build de desenvolvimento for compartilhado para teste dirigido, registre também:
 
-The current public beta is not a Vulkan-conformance claim and not a universal Mali-G720 compatibility claim.
+- nome técnico exato do artefato;
+- SHA-256 do pacote;
+- feature/boundary em teste;
+- diferença em relação à beta pública.
 
-## Safety
+Não descreva um build interno como nova beta sem publicação oficial.
 
-Experimental GPU-driver tests can hang applications, fault the GPU, or require a device reboot. Save important work before testing.
+## Interpretação
 
-Never attach passwords, API tokens, account cookies, private keys, or unrelated personal data to a report.
+- assertion de aplicação != GPU fatal automaticamente;
+- `VkResult` não-zero != GPU fatal automaticamente;
+- tooling failure != driver failure;
+- transporte indisponível != driver failure;
+- preserve logs originais sem editar.
+
+## Segurança
+
+Testes de driver GPU experimental podem travar aplicações, faultar a GPU ou exigir reboot. Salve trabalhos importantes antes de testar.
+
+Nunca anexe tokens, senhas, cookies, chaves privadas, dumps com dados pessoais desnecessários ou outros segredos.

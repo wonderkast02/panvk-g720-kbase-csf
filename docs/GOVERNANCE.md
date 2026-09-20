@@ -1,31 +1,56 @@
-# Repository governance
+# Governança do repositório
 
-## Branch roles
+## Função das branches
 
-- `main`: active public landing/documentation branch.
-- `ci`: frozen historical full-Mesa checkpoint.
-- `android-candidate-beta-1.9.4`: frozen source lineage for release `0.1.0-beta.1.9.4`.
+- `main`: landing pública e documentação ativa;
+- `ci`: checkpoint histórico full-Mesa preservado;
+- `android-candidate-beta-1.9.4`: lineage congelada da release `0.1.0-beta.1.9.4`.
 
-`main` and `ci` intentionally retain unrelated histories; they are not merged or rebased merely to normalize the graph.
+Branches congeladas não devem receber manutenção comum de documentação ou refactors.
 
-## Release integrity
+## Separação entre desenvolvimento e release
 
-Published driver bytes are versioned immutably by policy: if driver/package bytes change, the public version changes.
+O projeto diferencia:
 
-The current public beta is tied to:
+1. desenvolvimento técnico;
+2. consolidação Git;
+3. qualificação de release;
+4. publicação pública.
+
+Fechar uma feature, consolidar código ou atualizar documentação não implica automaticamente nova versão.
+
+## Integridade de releases
+
+A beta pública atual é vinculada a:
 
 - tag `0.1.0-beta.1.9.4`;
 - source commit `3549264275c9663ed73e01d652f4c0d16f21df22`;
 - package SHA-256 `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`.
 
-Repository governance requires release tags to be protected from update/deletion and frozen source branches to remain unchanged. `main` should block deletion and non-fast-forward history rewrites while retaining normal fast-forward maintenance.
+Tags e artefatos publicados não devem ser substituídos silenciosamente.
 
-Future releases should use GitHub Immutable Releases. GitHub documents that repository-level release immutability applies only to releases published after enablement, so the already-published `0.1.0-beta.1.9.4` remains anchored by its exact tag, source commit and recorded asset digests.
+## Evidência
 
-## Security and reports
+Princípios de qualificação:
 
-Private vulnerability reporting is enabled. Community test reports should follow `docs/COMMUNITY_TESTING.md`.
+- runtime > grep;
+- evidência bruta > classificador;
+- compile > static guess quando a compilação é o teste correto;
+- first real fail > ruído posterior;
+- falha de instrumentação != falha do driver;
+- transporte indisponível != falha do driver;
+- archive integrity pass != technical pass.
 
-## Licensing
+Features publicamente anunciadas devem ter implementação e validação compatíveis com o claim.
 
-This governance change does not add, replace, or reinterpret project licensing. License normalization is intentionally outside the scope of this repository-hardening transaction.
+## Histórico Git
+
+Não reescrever histórico apenas para estética. Históricos distintos preservados por motivo técnico/proveniência não devem ser fundidos à força.
+
+## Segurança
+
+Relatórios sensíveis devem seguir `SECURITY.md`. Testes comunitários seguem `docs/COMMUNITY_TESTING.md`.
+
+## Licenciamento
+
+Esta governança não substitui nem normaliza licenças. Consulte `LICENSING.md` e os identificadores SPDX/copyrights por arquivo.
