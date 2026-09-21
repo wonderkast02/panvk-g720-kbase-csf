@@ -22,9 +22,10 @@ Este roadmap descreve direção técnica, não promessa de prazo ou de versão p
 
 ## Fase atual
 
-- [ ] consolidar árvore pós-GS;
+- [x] consolidar árvore pós-GS em `g720-development`;
 - [ ] garantir que o diff final contenha apenas código de produção;
-- [ ] preservar proveniência de fonte/build/runtime;
+- [x] preservar autoridade/proveniência da source tree pós-GS;
+- [ ] ampliar a prova de reprodutibilidade com fresh clone → build controlado;
 - [ ] melhorar reprodutibilidade;
 - [ ] ampliar regressões sem reabrir casos fechados sem causa real.
 

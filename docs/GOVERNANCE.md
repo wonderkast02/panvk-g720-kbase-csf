@@ -3,6 +3,7 @@
 ## Função das branches
 
 - `main`: landing pública e documentação ativa;
+- `g720-development`: source authority de desenvolvimento pós-GS;
 - `ci`: checkpoint histórico full-Mesa preservado;
 - `android-candidate-beta-1.9.4`: lineage congelada da release `0.1.0-beta.1.9.4`.
 
@@ -18,6 +19,18 @@ O projeto diferencia:
 4. publicação pública.
 
 Fechar uma feature, consolidar código ou atualizar documentação não implica automaticamente nova versão.
+
+## Proteção da branch de desenvolvimento
+
+`g720-development` preserva a autoridade pós-GS. No estado atual:
+
+- force-push: bloqueado;
+- deleção: bloqueada;
+- histórico linear: exigido;
+- enforcement para administradores: ativo;
+- status `Drive-G720/PPA6-audit`: registra a qualificação externa do commit autoritativo.
+
+O status PPA6 não deve ser apresentado como GitHub Actions/CI interno; ele referencia uma qualificação externa já concluída.
 
 ## Integridade de releases
 

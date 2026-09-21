@@ -58,6 +58,21 @@ Até que um novo candidato seja explicitamente escolhido:
 - preservar a autoridade de fonte/build/runtime separadamente;
 - registrar hashes e source binding antes de qualquer release futura.
 
+## Autoridade de desenvolvimento pós-GS
+
+A consolidação pós-GS atualmente publicada é:
+
+- branch: `g720-development`;
+- commit autoritativo: `77832026e87fc39a48d691dd5a46e9908726b0bf`;
+- pai/base congelada: `0521a3257628e811cfead6b5a9753e9f705e2f31` (`ci`);
+- delta: **22 paths** de source sobre o checkpoint congelado;
+- qualificação externa registrada no GitHub: `Drive-G720/PPA6-audit = success`;
+- proteção: force-push e deleção desativados, histórico linear e enforcement para admins ativos.
+
+O commit permanece **unsigned** e não é reescrito apenas para obter assinatura, porque reescrevê-lo mudaria o SHA já utilizado como autoridade. Uma assinatura ausente não substitui nem invalida a cadeia de evidência externa existente.
+
+Esse commit é autoridade de **desenvolvimento**, não nova beta, tag ou release pública.
+
 ## Build reproduzível
 
 O repositório Git sozinho não é tratado como imagem hermética de build. Reproduzir os mesmos bytes também depende do ambiente externo documentado: Android NDK/API, Meson, toolchain e dependências locais pertinentes.

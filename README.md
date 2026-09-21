@@ -30,12 +30,13 @@
 
 O **Drive G720 / PanVK** adapta o Mesa/PanVK para executar diretamente sobre a **Arm Mali-G720**, usando a interface **Kbase/CSF** disponível em kernels Android.
 
-A linha atual de desenvolvimento concluiu o **fechamento funcional do Geometry Shader**. Isso é posterior à beta pública atual e **não cria automaticamente uma nova release**.
+A linha atual de desenvolvimento concluiu o **fechamento funcional do Geometry Shader** e está consolidada na branch **`g720-development`**. Isso é posterior à beta pública atual e **não cria automaticamente uma nova release**.
 
 | | Estado |
 |---|---|
 | **Linha de desenvolvimento** | Geometry Shader funcionalmente fechado ✅ |
 | **Beta pública atual** | `0.1.0-beta.1.9.4` |
+| **Branch de desenvolvimento** | `g720-development` · `77832026e87f…` |
 | **GPU principal de validação** | Mali-G720 MC8 |
 | **Foco atual** | Consolidação, compatibilidade, regressões e otimização |
 

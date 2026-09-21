@@ -1,6 +1,6 @@
 # PanVK G720 — Estado atual
 
-Atualizado em: **2026-09-20**
+Atualizado em: **2026-09-21**
 
 ## Resumo
 
@@ -14,6 +14,7 @@ O fechamento pós-beta **não altera os bytes, a tag ou a identidade da release 
 ## Layout do repositório
 
 - `main`: landing pública e documentação;
+- `g720-development`: autoridade de desenvolvimento pós-GS, commit `77832026e87fc39a48d691dd5a46e9908726b0bf`;
 - `ci`: checkpoint histórico full-Mesa `0521a3257628e811cfead6b5a9753e9f705e2f31`;
 - `android-candidate-beta-1.9.4`: fonte congelada da release pública `0.1.0-beta.1.9.4`.
 
@@ -43,7 +44,9 @@ O escopo dirigido de Geometry Shader foi fechado funcionalmente no hardware de r
 Estado operacional atual:
 
 - Geometry Shader: **fechamento funcional concluído**;
-- source tree pós-GS: **em consolidação/auditoria**;
+- source tree pós-GS: **consolidada e publicada em `g720-development`**;
+- qualificação externa: **`Drive-G720/PPA6-audit = success`** para o commit autoritativo de 22 paths;
+- proteção da branch: **force-push e deleção bloqueados; histórico linear e enforcement para admins ativos**;
 - nova beta: **não atribuída**;
 - nova tag: **não criada**;
 - release pública nova: **não autorizada**;
