@@ -108,7 +108,7 @@ prepare_driver_set(struct panvk_cmd_buffer *cmdbuf)
       return VK_SUCCESS;
 
    const struct panvk_shader_desc_info *cs_desc_info =
-      &cmdbuf->state.compute.shader->desc_info;
+      &panvk_shader_only_variant(cmdbuf->state.compute.shader)->desc_info;
    const struct panvk_descriptor_state *desc_state =
       &cmdbuf->state.compute.desc_state;
    struct panvk_shader_desc_state *cs_desc_state =
@@ -359,7 +359,7 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
       return;
 
    const struct panvk_shader_desc_info *cs_desc_info =
-      &cmdbuf->state.compute.shader->desc_info;
+      &panvk_shader_only_variant(cmdbuf->state.compute.shader)->desc_info;
    struct panvk_descriptor_state *desc_state =
       &cmdbuf->state.compute.desc_state;
    struct panvk_shader_desc_state *cs_desc_state =

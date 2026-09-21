@@ -112,8 +112,14 @@ typedef VkResult (*panvk_kbase_sync_wait_func)(
    const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT],
    uint64_t abs_timeout_ns);
 
+typedef VkResult (*panvk_kbase_sync_export_func)(
+   struct vk_device *device, void *data,
+   const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT],
+   int *sync_file);
+
 void panvk_kbase_sync_set_pending(
    struct vk_sync *sync, void *data, panvk_kbase_sync_wait_func wait,
+   panvk_kbase_sync_export_func export_sync_file,
    const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT]);
 #endif
 

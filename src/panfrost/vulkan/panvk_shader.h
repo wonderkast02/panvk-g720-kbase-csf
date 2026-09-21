@@ -11,6 +11,7 @@
 #endif
 
 #include "compiler/pan_compiler.h"
+#include "poly/nir/poly_nir.h"
 
 #include "pan_desc.h"
 #include "pan_earlyzs.h"
@@ -126,6 +127,14 @@ struct panvk_common_sysvals {
 struct panvk_poly_sysvals {
    aligned_u64 vertex_param_buffer;
    aligned_u64 tess_param_buffer;
+
+   /* Software-GS parameter block. Runtime population is intentionally
+    * deferred until the compiler/offline contract is closed. */
+   aligned_u64 geometry_param_buffer;
+
+   /* Dynamic rasterization convention consumed by software GS. */
+   uint32_t provoking_last;
+   uint32_t _pad_geometry;
 } __attribute__((aligned(FAU_WORD_SIZE)));
 
 static_assert((sizeof(struct panvk_poly_sysvals) % FAU_WORD_SIZE) == 0,
@@ -173,6 +182,7 @@ struct panvk_graphics_sysvals {
       int32_t first_vertex;
       int32_t base_instance;
       uint32_t noperspective_varyings;
+      uint32_t draw_id;
    } vs;
 
    struct {
@@ -425,12 +435,20 @@ struct panvk_shader_variant {
 
       struct {
          struct pan_earlyzs_lut earlyzs_lut;
+
+         /* Location-indexed mask consumed by software GS flat/provoking
+          * vertex lowering. This is driver metadata, not backend metadata. */
+         uint64_t flat_outputs;
+
          uint32_t input_attachment_read;
          uint32_t tile_image_color_read;
          bool tile_image_z_read;
          bool tile_image_s_read;
       } fs;
    };
+
+   struct panvk_shader_desc_info desc_info;
+
 
    struct panvk_shader_fau_info fau;
 
@@ -472,6 +490,22 @@ enum panvk_vs_variant {
    PANVK_VS_VARIANTS,
 };
 
+enum panvk_gs_variant {
+   /* Hardware vertex shader which rasterizes generated vertices. */
+   PANVK_GS_VARIANT_RAST,
+
+   /* Main software geometry program, physically executed as compute. */
+   PANVK_GS_VARIANT_MAIN,
+
+   /* Optional count program, physically executed as compute. */
+   PANVK_GS_VARIANT_COUNT,
+
+   /* Optional pre-GS program, physically executed as compute. */
+   PANVK_GS_VARIANT_PRE,
+
+   PANVK_GS_VARIANTS,
+};
+
 /*
  * Original Vulkan tessellation metadata retained before libpoly lowers
  * TCS to compute and TES to a hardware vertex shader.
@@ -495,12 +529,20 @@ struct panvk_tess_info {
    uint8_t ccw;
 };
 
+/* Compile-time libpoly geometry metadata. Runtime consumption is handled by
+ * the physical execution path; keeping the POD object at API-shader level makes cache serialization
+ * explicit while descriptor ownership remains per physical variant. */
+struct panvk_gs_info {
+   struct poly_gs_info poly;
+
+   /* Original API GS had memory side effects before libpoly split. */
+   bool sidefx;
+};
+
 struct panvk_shader {
    struct vk_shader vk;
-
-   struct panvk_shader_desc_info desc_info;
-
    struct panvk_tess_info tess;
+   struct panvk_gs_info gs;
 
    struct panvk_shader_variant variants[];
 };
@@ -508,15 +550,26 @@ struct panvk_shader {
 static inline unsigned
 panvk_shader_num_variants(mesa_shader_stage stage)
 {
-   if (stage == MESA_SHADER_VERTEX)
+   switch (stage) {
+   case MESA_SHADER_VERTEX:
       return PANVK_VS_VARIANTS;
-
-   return 1;
+   case MESA_SHADER_GEOMETRY:
+      return PANVK_GS_VARIANTS;
+   default:
+      return 1;
+   }
 }
 
 static const char *panvk_vs_shader_variant_name[] = {
    [PANVK_VS_VARIANT_HW] = NULL,
    [PANVK_VS_VARIANT_XFB] = "xfb",
+};
+
+static const char *panvk_gs_shader_variant_name[] = {
+   [PANVK_GS_VARIANT_RAST] = "Rasterization",
+   [PANVK_GS_VARIANT_MAIN] = "Main",
+   [PANVK_GS_VARIANT_COUNT] = "Count",
+   [PANVK_GS_VARIANT_PRE] = "Pre-GS",
 };
 
 static const char *
@@ -529,6 +582,11 @@ panvk_shader_variant_name(const struct panvk_shader *shader,
    if (shader->vk.stage == MESA_SHADER_VERTEX) {
       assert(i < ARRAY_SIZE(panvk_vs_shader_variant_name));
       return panvk_vs_shader_variant_name[i];
+   }
+
+   if (shader->vk.stage == MESA_SHADER_GEOMETRY) {
+      assert(i < ARRAY_SIZE(panvk_gs_shader_variant_name));
+      return panvk_gs_shader_variant_name[i];
    }
 
    assert(panvk_shader_num_variants(shader->vk.stage) == 1);
@@ -562,6 +620,18 @@ panvk_shader_xfb_variant(const struct panvk_shader *shader)
       return NULL;
 
    return &shader->variants[PANVK_VS_VARIANT_XFB];
+}
+
+static inline const struct panvk_shader_variant *
+panvk_shader_gs_variant(const struct panvk_shader *shader,
+                        enum panvk_gs_variant variant)
+{
+   if (!shader)
+      return NULL;
+
+   assert(shader->vk.stage == MESA_SHADER_GEOMETRY);
+   assert(variant < PANVK_GS_VARIANTS);
+   return &shader->variants[variant];
 }
 
 static inline uint64_t

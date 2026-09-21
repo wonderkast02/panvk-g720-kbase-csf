@@ -824,6 +824,8 @@ panvk_per_arch(cmd_prepare_draw_sysvals)(struct panvk_cmd_buffer *cmdbuf,
                   noperspective_varyings);
    set_gfx_sysval(cmdbuf, dirty_sysvals, vs.first_vertex, info->vertex.base);
    set_gfx_sysval(cmdbuf, dirty_sysvals, vs.base_instance, info->instance.base);
+   set_gfx_sysval(cmdbuf, dirty_sysvals, vs.draw_id,
+                  info->indirect.record_index);
 
 #if PAN_ARCH < 9
    set_gfx_sysval(cmdbuf, dirty_sysvals, vs.raw_vertex_offset,
@@ -938,12 +940,10 @@ panvk_per_arch(cmd_prepare_draw_sysvals)(struct panvk_cmd_buffer *cmdbuf,
                      fs_desc_state->dyn_ssbos);
    }
 
-   uint32_t used_set_mask = 0;
-   used_set_mask |= cmdbuf->state.gfx.vs.shader->desc_info.used_set_mask;
-   if (fs)
-      used_set_mask |= cmdbuf->state.gfx.fs.shader->desc_info.used_set_mask;
-
    for (uint32_t i = 0; i < MAX_SETS; i++) {
+      uint32_t used_set_mask =
+         vs->desc_info.used_set_mask | (fs ? fs->desc_info.used_set_mask : 0);
+
       if (used_set_mask & BITFIELD_BIT(i)) {
          set_gfx_sysval(cmdbuf, dirty_sysvals, desc.sets[i],
                         desc_state->sets[i]->descs.dev);

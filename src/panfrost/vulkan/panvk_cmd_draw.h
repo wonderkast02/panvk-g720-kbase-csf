@@ -139,6 +139,7 @@ enum panvk_cmd_graphics_dirty_state {
    PANVK_CMD_GRAPHICS_DIRTY_VS,
    PANVK_CMD_GRAPHICS_DIRTY_TCS,
    PANVK_CMD_GRAPHICS_DIRTY_TES,
+   PANVK_CMD_GRAPHICS_DIRTY_GS,
    PANVK_CMD_GRAPHICS_DIRTY_FS,
    PANVK_CMD_GRAPHICS_DIRTY_VB,
    PANVK_CMD_GRAPHICS_DIRTY_OQ,
@@ -233,6 +234,18 @@ struct panvk_cmd_graphics_state {
       /* VkDrawIndexedIndirectCommand emitted by the tessellator. */
       uint64_t out_draws;
    } tess;
+
+   /*
+    * Geometry is split by libpoly into physical variants.  Descriptor and FAU
+    * state is per variant; never collapse this back to shader-wide state.
+    */
+   struct {
+      const struct panvk_shader *shader;
+      struct {
+         struct panvk_shader_desc_state desc;
+         uint64_t push_uniforms;
+      } variants[PANVK_GS_VARIANTS];
+   } gs;
 
    struct {
       struct panvk_attrib_buf bufs[MAX_VBS];
@@ -474,6 +487,8 @@ struct panvk_draw_info {
       uint64_t count_buffer_dev_addr;
       uint32_t draw_count;
       uint32_t stride;
+      /* CPU-unrolled tess indirect record; count activation remains GPU-side. */
+      uint32_t record_index;
    } indirect;
 
    enum mesa_prim prim;

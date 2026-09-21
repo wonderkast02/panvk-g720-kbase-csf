@@ -151,15 +151,19 @@ to_panvk_device(struct vk_device *dev)
 static inline const struct drm_panthor_csif_info *
 panvk_get_csif_props(const struct panvk_device *dev)
 {
-#ifdef HAVE_PAN_KMOD_KBASE
+#if defined(HAVE_PAN_KMOD_KBASE) && !defined(HAVE_PAN_KMOD_PANTHOR)
+   return kbase_kmod_get_csif_props(dev->kmod.dev);
+#elif defined(HAVE_PAN_KMOD_KBASE)
    const struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
 
    if (phys_dev->kbase_node_path[0])
       return kbase_kmod_get_csif_props(dev->kmod.dev);
-#endif
 
    return panthor_kmod_get_csif_props(dev->kmod.dev);
+#else
+   return panthor_kmod_get_csif_props(dev->kmod.dev);
+#endif
 }
 
 /* Latest cache-flush ID, sourced from the panthor uAPI or the kbase CSF
@@ -167,15 +171,19 @@ panvk_get_csif_props(const struct panvk_device *dev)
 static inline uint32_t
 panvk_get_flush_id(const struct panvk_device *dev)
 {
-#ifdef HAVE_PAN_KMOD_KBASE
+#if defined(HAVE_PAN_KMOD_KBASE) && !defined(HAVE_PAN_KMOD_PANTHOR)
+   return kbase_kmod_get_flush_id(dev->kmod.dev);
+#elif defined(HAVE_PAN_KMOD_KBASE)
    const struct panvk_physical_device *phys_dev =
       to_panvk_physical_device(dev->vk.physical);
 
    if (phys_dev->kbase_node_path[0])
       return kbase_kmod_get_flush_id(dev->kmod.dev);
-#endif
 
    return panthor_kmod_get_flush_id(dev->kmod.dev);
+#else
+   return panthor_kmod_get_flush_id(dev->kmod.dev);
+#endif
 }
 
 static inline void

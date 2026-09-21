@@ -68,6 +68,22 @@ int kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
                               uint64_t target_minus_one,
                               int64_t timeout_ns);
 
+/* One independent KCPU queue per exported completion payload. */
+struct kbase_kmod_cqs_wait {
+   uint64_t addr;
+   uint64_t target_minus_one;
+};
+
+int kbase_kmod_csf_export_sync_file(
+   struct pan_kmod_dev *dev,
+   const struct kbase_kmod_cqs_wait *waits,
+   uint32_t wait_count, int *sync_file);
+
+/* Compatibility export for transports which cannot carry the legal
+ * SYNC_FD -1 sentinel. Returns a new FD for an already-signaled sync_file. */
+int kbase_kmod_csf_export_signaled_sync_file(struct pan_kmod_dev *dev,
+                                             int *sync_file);
+
 /* Report whether this kbase context has seen a queue-group error.  The error
  * state is latched while completion waits consume the notification stream. */
 bool kbase_kmod_csf_has_error(const struct pan_kmod_dev *dev);

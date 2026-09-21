@@ -305,8 +305,8 @@ panvk_per_arch(get_physical_device_features)(
       .fullDrawIndexUint32 = true,
       .imageCubeArray = true,
       .independentBlend = true,
-      .geometryShader = false,
-      .tessellationShader = false,
+      .geometryShader = true,
+      .tessellationShader = true,
       .sampleRateShading = true,
       .dualSrcBlend = true,
       .logicOp = true,
@@ -838,7 +838,7 @@ panvk_per_arch(get_physical_device_properties)(
 
    *properties = (struct vk_properties){
       .apiVersion = get_api_version(),
-      .driverVersion = vk_get_driver_version(),
+      .driverVersion = 0x06802095u,
       .vendorID =
          instance->drirc.debug.force_vk_vendor ? instance->drirc.debug.force_vk_vendor : ARM_VENDOR_ID,
       .deviceID = device->kmod.dev->props.gpu_id,
@@ -924,12 +924,12 @@ panvk_per_arch(get_physical_device_properties)(
       .maxTessellationControlTotalOutputComponents = 4216,
       .maxTessellationEvaluationInputComponents = 128,
       .maxTessellationEvaluationOutputComponents = 128,
-      /* Geometry shaders not supported. */
-      .maxGeometryShaderInvocations = 0,
-      .maxGeometryInputComponents = 0,
-      .maxGeometryOutputComponents = 0,
-      .maxGeometryOutputVertices = 0,
-      .maxGeometryTotalOutputComponents = 0,
+      /* Conservative Geometry Shader limits for the qualified G720 scope. */
+      .maxGeometryShaderInvocations = 32,
+      .maxGeometryInputComponents = 64,
+      .maxGeometryOutputComponents = 64,
+      .maxGeometryOutputVertices = 256,
+      .maxGeometryTotalOutputComponents = 1024,
       /* 32 vec4 varyings. */
       .maxFragmentInputComponents = 128,
       /* 8 render targets. */

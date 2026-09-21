@@ -74,8 +74,6 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
    panvk_per_arch(cmd_close_batch)(cmdbuf);
    struct panvk_batch *batch = panvk_per_arch(cmd_open_batch)(cmdbuf);
 
-   const struct panvk_shader_desc_info *cs_desc_info =
-      &cmdbuf->state.compute.shader->desc_info;
    struct panvk_descriptor_state *desc_state =
       &cmdbuf->state.compute.desc_state;
    struct panvk_shader_desc_state *cs_desc_state =
@@ -91,7 +89,7 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
                                                            &wg_count, indirect);
 
    result = panvk_per_arch(cmd_prepare_push_descs)(
-      cmdbuf, desc_state, cs_desc_info->used_set_mask);
+      cmdbuf, desc_state, cs->desc_info.used_set_mask);
    if (result != VK_SUCCESS)
       return;
 
@@ -100,17 +98,17 @@ cmd_dispatch(struct panvk_cmd_buffer *cmdbuf, struct panvk_dispatch_info *info)
    if (compute_state_dirty(cmdbuf, CS) ||
        compute_state_dirty(cmdbuf, DESC_STATE)) {
       result = panvk_per_arch(cmd_prepare_shader_desc_tables)(
-         cmdbuf, desc_state, cs_desc_info, true, cs_desc_state);
+         cmdbuf, desc_state, &cs->desc_info, true, cs_desc_state);
       if (result != VK_SUCCESS)
          return;
 
       result = panvk_per_arch(cmd_prepare_dyn_ssbos)(
-         cmdbuf, desc_state, cs_desc_info, cs_desc_state);
+         cmdbuf, desc_state, &cs->desc_info, cs_desc_state);
       if (result != VK_SUCCESS)
          return;
 
       result = panvk_per_arch(meta_get_copy_desc_job)(
-         cmdbuf, cs_desc_info, &cmdbuf->state.compute.desc_state,
+         cmdbuf, &cs->desc_info, &cmdbuf->state.compute.desc_state,
          cs_desc_state, 0, &copy_desc_job);
       if (result != VK_SUCCESS)
          return;

@@ -481,7 +481,14 @@ visit_intrinsic(nir_intrinsic_instr *instr, struct divergence_state *state)
          is_divergent = true;
       break;
    case nir_intrinsic_load_attribute_pan:
-      assert(stage == MESA_SHADER_VERTEX);
+      /*
+       * PanVK/libpoly SW-VS compute attribute path:
+       * PanVK/libpoly converts the tessellation software VS to COMPUTE.
+       * load_attribute_pan already carries explicit vertex and instance IDs,
+       * so allow that internal SW-VS form without relaxing other intrinsics.
+       */
+      assert(stage == MESA_SHADER_VERTEX ||
+             stage == MESA_SHADER_COMPUTE);
       is_divergent = src_divergent(instr->src[0], state) ||
                      src_divergent(instr->src[1], state) ||
                      src_divergent(instr->src[2], state);

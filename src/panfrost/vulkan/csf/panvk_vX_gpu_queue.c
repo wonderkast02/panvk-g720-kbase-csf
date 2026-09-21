@@ -27,7 +27,9 @@
 #include "vk_sync.h"
 
 #ifdef HAVE_PAN_KMOD_KBASE
+#include <errno.h>
 #include <inttypes.h>
+#include <string.h>
 #include <unistd.h>
 #include "drm-uapi/mali_kbase_ioctl.h"
 #include "kmod/kbase_kmod.h"
@@ -2287,6 +2289,16 @@ panvk_queue_submit_init_storage(
       struct panvk_cmd_buffer *cmdbuf = container_of(
          vk_submit->command_buffers[i], struct panvk_cmd_buffer, vk);
 
+
+      /*
+       * Tessellation command buffers currently carry mutable execution state.
+       * Serialize replay of simultaneous-use tessellation command buffers until
+       * that state is made per-execution.
+       */
+      if ((cmdbuf->flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT) &&
+          cmdbuf->state.gfx.tess.tes.shader)
+         submit->force_sync = true;
+
       if (UINT64_MAX - submit->tiler_work_estimate <
           cmdbuf->state.tiler_work_estimate)
          submit->tiler_work_estimate = UINT64_MAX;
@@ -2662,6 +2674,18 @@ kbase_wait_sync_targets(
 }
 
 static VkResult
+kbase_export_sync_targets(struct vk_device *vk_device, void *data,
+   const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT], int *sync_file)
+{
+   struct panvk_gpu_queue *queue=data; struct panvk_device *dev=to_panvk_device(vk_device);
+   struct kbase_kmod_cqs_wait waits[PANVK_KBASE_SYNC_TARGET_COUNT]; uint32_t n=0;
+   for(uint32_t i=0;i<PANVK_SUBQUEUE_COUNT;i++) if(targets[i]) waits[n++]=(struct kbase_kmod_cqs_wait){ .addr=kbase_subqueue_seqno_dev_addr(queue,i), .target_minus_one=targets[i]-1 };
+   if(kbase_kmod_csf_export_sync_file(dev->kmod.dev,waits,n,sync_file)==0) return VK_SUCCESS;
+   int e=errno;VkResult r=e==ENOMEM?VK_ERROR_OUT_OF_HOST_MEMORY:VK_ERROR_UNKNOWN;
+   return vk_errorf(vk_device,r,"kbase real sync_file export failed: %s",strerror(e));
+}
+
+static VkResult
 kbase_wait_graphics_targets(
    struct panvk_gpu_queue *queue,
    const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT],
@@ -2808,6 +2832,7 @@ panvk_queue_submit_process_signals_kbase(struct panvk_queue_submit *submit,
       assert(signal->signal_value == 0);
       panvk_kbase_sync_set_pending(signal->sync, submit->queue,
                                    kbase_wait_sync_targets,
+                                   kbase_export_sync_targets,
                                    submit->kbase_target_seqnos);
    }
 }

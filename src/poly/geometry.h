@@ -513,7 +513,7 @@ poly_work_group_scan_inclusive_add(uint x, local uint *scratch)
    uint sg = sub_group_scan_inclusive_add(x);
 
    /* Reduction (sum) for the subgroup */
-   uint sg_sum = sub_group_broadcast(sg, 31);
+   uint sg_sum = sub_group_broadcast(sg, get_sub_group_size() - 1);
 
    /* Write out all the subgroups sums */
    barrier(CLK_LOCAL_MEM_FENCE);
@@ -533,7 +533,7 @@ poly_work_group_scan_inclusive_add(uint x, local uint *scratch)
    uint prefix = base + sg;
 
    /* Reduce the workgroup using the prefix sum we already did */
-   uint reduction = sub_group_broadcast(other_sums + other_sum, 31);
+   uint reduction = sub_group_broadcast(other_sums + other_sum, get_sub_group_size() - 1);
 
    return (uint2)(prefix, reduction);
 }

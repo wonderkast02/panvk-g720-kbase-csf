@@ -51,6 +51,13 @@
 #include "util/log.h"
 
 #include "drm-uapi/mali_kbase_ioctl.h"
+
+/* Kbase private-CSF ABI capacity mirrored from mali_base_csf_kernel.h.
+ * Exact local provenance is required by the executor before this patch.
+ * Do not include that private header here: mali_kbase_ioctl.h already mirrors
+ * the KCPU enums/structs, and both definitions collide in one translation unit.
+ */
+#define KBASE_KMOD_CQS_MAX_WAITS ((size_t)32)
 /* Only used as the interchange format for CSF interface information; no
  * panthor functionality is required. */
 #include "drm-uapi/panthor_drm.h"
@@ -66,6 +73,12 @@ const struct pan_kmod_ops kbase_kmod_ops;
 /* -------------------------------------------------------------------------
  * Internal device / BO / VM objects
  * ---------------------------------------------------------------------- */
+
+struct kbase_kmod_sync_export {
+   struct kbase_kmod_sync_export *next;
+   base_kcpu_queue_id id;
+   int tracker_fd;
+};
 
 struct kbase_kmod_dev {
    struct pan_kmod_dev base;
@@ -109,6 +122,14 @@ struct kbase_kmod_dev {
       uint64_t target_minus_one;
       int fence_fd;
    } kcpu;
+
+   struct {
+      simple_mtx_t lock;
+      struct kbase_kmod_sync_export *head;
+      int signaled_fd;
+      base_kcpu_queue_id signaled_queue_id;
+      bool signaled_queue_valid;
+   } sync_exports;
 };
 
 struct kbase_kmod_vm {
@@ -839,6 +860,202 @@ kbase_kcpu_poll_fence(int fd, int64_t timeout_ns)
    return pfd.revents & (POLLIN | POLLERR | POLLHUP) ? 1 : -1;
 }
 
+static void
+kbase_sync_export_delete_queue(struct kbase_kmod_dev *kbase_dev,
+                               base_kcpu_queue_id id)
+{
+   struct kbase_ioctl_kcpu_queue_delete delete = { .id = id };
+   if (ioctl(kbase_dev->base.fd, KBASE_IOCTL_KCPU_QUEUE_DELETE, &delete))
+      mesa_logw("kbase: sync export queue %u delete failed: %s", id, strerror(errno));
+}
+
+static void
+kbase_sync_export_reap_locked(struct kbase_kmod_dev *kbase_dev)
+{
+   struct kbase_kmod_sync_export **link = &kbase_dev->sync_exports.head;
+   while (*link) {
+      struct kbase_kmod_sync_export *token = *link;
+      if (token->tracker_fd < 0) { link = &token->next; continue; }
+      int ret = kbase_kcpu_poll_fence(token->tracker_fd, 0);
+      if (ret != 1) { link = &token->next; continue; }
+      close(token->tracker_fd);
+      kbase_sync_export_delete_queue(kbase_dev, token->id);
+      mesa_logd("kbase: reaped sync export queue %u", token->id);
+      *link = token->next;
+      free(token);
+   }
+}
+
+static void
+kbase_sync_export_discard_pending_locked(struct kbase_kmod_dev *kbase_dev)
+{
+   while (kbase_dev->sync_exports.head) {
+      struct kbase_kmod_sync_export *token = kbase_dev->sync_exports.head;
+      kbase_dev->sync_exports.head = token->next;
+      if (token->tracker_fd >= 0) close(token->tracker_fd);
+      mesa_logd("kbase: leaving pending sync export queue %u to context close", token->id);
+      free(token);
+   }
+
+   if (kbase_dev->sync_exports.signaled_fd >= 0) {
+      close(kbase_dev->sync_exports.signaled_fd);
+      kbase_dev->sync_exports.signaled_fd = -1;
+   }
+   if (kbase_dev->sync_exports.signaled_queue_valid) {
+      kbase_sync_export_delete_queue(kbase_dev,
+                                     kbase_dev->sync_exports.signaled_queue_id);
+      kbase_dev->sync_exports.signaled_queue_valid = false;
+      kbase_dev->sync_exports.signaled_queue_id = 0;
+   }
+}
+
+int
+kbase_kmod_csf_export_signaled_sync_file(struct pan_kmod_dev *dev,
+                                         int *sync_file)
+{
+   struct kbase_kmod_dev *kbase_dev =
+      container_of(dev, struct kbase_kmod_dev, base);
+
+   if (!sync_file) {
+      errno = EINVAL;
+      return -1;
+   }
+
+   *sync_file = -1;
+   if (!kbase_dev->is_csf) {
+      errno = ENOTSUP;
+      return -1;
+   }
+
+   simple_mtx_lock(&kbase_dev->sync_exports.lock);
+   kbase_sync_export_reap_locked(kbase_dev);
+
+   if (kbase_dev->sync_exports.signaled_fd < 0) {
+      struct kbase_kmod_sync_export *token = calloc(1, sizeof(*token));
+      if (!token) {
+         simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+         errno = ENOMEM;
+         return -1;
+      }
+
+      struct kbase_ioctl_kcpu_queue_new create = {0};
+      if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_CREATE, &create)) {
+         int err = errno;
+         free(token);
+         simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+         errno = err;
+         return -1;
+      }
+
+      token->id = create.id;
+      token->tracker_fd = -1;
+
+      struct base_fence fence = {
+         .basep = {
+            .fd = -1,
+            .stream_fd = -1,
+         },
+      };
+      struct base_kcpu_command fence_cmd = {
+         .type = BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL,
+         .info.fence = {
+            .fence = (uintptr_t)&fence,
+         },
+      };
+      struct kbase_ioctl_kcpu_queue_enqueue enqueue = {
+         .addr = (uintptr_t)&fence_cmd,
+         .nr_commands = 1,
+         .id = create.id,
+      };
+
+      if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, &enqueue) ||
+          fence.basep.fd < 0) {
+         int err = errno ? errno : EIO;
+         if (fence.basep.fd >= 0) {
+            token->tracker_fd = fence.basep.fd;
+            token->next = kbase_dev->sync_exports.head;
+            kbase_dev->sync_exports.head = token;
+         } else {
+            kbase_sync_export_delete_queue(kbase_dev, create.id);
+            free(token);
+         }
+         simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+         errno = err;
+         return -1;
+      }
+
+      int ready = kbase_kcpu_poll_fence(fence.basep.fd, 5000000000ll);
+      if (ready != 1) {
+         int err = ready < 0 ? (errno ? errno : EIO) : ETIMEDOUT;
+         token->tracker_fd = fence.basep.fd;
+         token->next = kbase_dev->sync_exports.head;
+         kbase_dev->sync_exports.head = token;
+         simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+         errno = err;
+         return -1;
+      }
+
+      kbase_dev->sync_exports.signaled_fd = fence.basep.fd;
+      kbase_dev->sync_exports.signaled_queue_id = create.id;
+      kbase_dev->sync_exports.signaled_queue_valid = true;
+      mesa_logd("kbase: cached real signaled sync_file template fd %d queue %u",
+                fence.basep.fd, create.id);
+      free(token);
+   }
+
+   int caller_fd =
+      fcntl(kbase_dev->sync_exports.signaled_fd, F_DUPFD_CLOEXEC, 0);
+   if (caller_fd < 0) {
+      int err = errno;
+      simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+      errno = err;
+      return -1;
+   }
+
+   *sync_file = caller_fd;
+   simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+   return 0;
+}
+
+int
+kbase_kmod_csf_export_sync_file(struct pan_kmod_dev *dev,
+                                const struct kbase_kmod_cqs_wait *waits,
+                                uint32_t wait_count, int *sync_file)
+{
+   struct kbase_kmod_dev *kbase_dev = container_of(dev, struct kbase_kmod_dev, base);
+   if (!sync_file) { errno = EINVAL; return -1; }
+   *sync_file = -1;
+   if (!kbase_dev->is_csf) { errno = ENOTSUP; return -1; }
+   if (!wait_count) return 0;
+   if (!waits || wait_count > KBASE_KMOD_CQS_MAX_WAITS) { errno = EINVAL; return -1; }
+   struct base_cqs_wait_operation_info *objs = calloc(wait_count, sizeof(*objs));
+   struct kbase_kmod_sync_export *token = calloc(1, sizeof(*token));
+   if (!objs || !token) { free(objs); free(token); errno = ENOMEM; return -1; }
+   for (uint32_t i = 0; i < wait_count; i++) {
+      if (waits[i].addr & 15) { free(objs); free(token); errno = EINVAL; return -1; }
+      objs[i] = (struct base_cqs_wait_operation_info){ .addr=waits[i].addr, .val=waits[i].target_minus_one, .operation=BASEP_CQS_WAIT_OPERATION_GT, .data_type=BASEP_CQS_DATA_TYPE_U64 };
+   }
+   struct base_fence fence = { .basep = { .fd=-1, .stream_fd=-1 } };
+   struct base_kcpu_command wait_cmd = { .type=BASE_KCPU_COMMAND_TYPE_CQS_WAIT_OPERATION, .info.cqs_wait_operation={ .objs=(uintptr_t)objs, .nr_objs=wait_count } };
+   struct base_kcpu_command fence_cmd = { .type=BASE_KCPU_COMMAND_TYPE_FENCE_SIGNAL, .info.fence={ .fence=(uintptr_t)&fence } };
+   simple_mtx_lock(&kbase_dev->sync_exports.lock);
+   kbase_sync_export_reap_locked(kbase_dev);
+   struct kbase_ioctl_kcpu_queue_new create = {0};
+   if (ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_CREATE, &create)) { int e=errno;simple_mtx_unlock(&kbase_dev->sync_exports.lock);free(objs);free(token);errno=e;return -1; }
+   token->id=create.id;token->tracker_fd=-1;
+   struct kbase_ioctl_kcpu_queue_enqueue ew={ .addr=(uintptr_t)&wait_cmd,.nr_commands=1,.id=create.id };
+   struct kbase_ioctl_kcpu_queue_enqueue ef={ .addr=(uintptr_t)&fence_cmd,.nr_commands=1,.id=create.id };
+   if (ioctl(dev->fd,KBASE_IOCTL_KCPU_QUEUE_ENQUEUE,&ew)) { int e=errno;kbase_sync_export_delete_queue(kbase_dev,create.id);simple_mtx_unlock(&kbase_dev->sync_exports.lock);free(objs);free(token);errno=e;return -1; }
+   if (ioctl(dev->fd,KBASE_IOCTL_KCPU_QUEUE_ENQUEUE,&ef) || fence.basep.fd < 0) {
+      int e=errno?errno:EIO;if(fence.basep.fd>=0)close(fence.basep.fd);token->next=kbase_dev->sync_exports.head;kbase_dev->sync_exports.head=token;simple_mtx_unlock(&kbase_dev->sync_exports.lock);free(objs);errno=e;return -1;
+   }
+   token->tracker_fd=fence.basep.fd;token->next=kbase_dev->sync_exports.head;kbase_dev->sync_exports.head=token;
+   int caller_fd=fcntl(token->tracker_fd,F_DUPFD_CLOEXEC,0);
+   if(caller_fd<0){int e=errno;simple_mtx_unlock(&kbase_dev->sync_exports.lock);free(objs);errno=e;return -1;}
+   *sync_file=caller_fd;mesa_logd("kbase: sync export queue %u waits %u tracker %d caller %d",token->id,wait_count,token->tracker_fd,caller_fd);
+   simple_mtx_unlock(&kbase_dev->sync_exports.lock);free(objs);return 0;
+}
+
 int
 kbase_kmod_csf_wait_cqs64(struct pan_kmod_dev *dev, uint64_t addr,
                            uint64_t target_minus_one, int64_t timeout_ns)
@@ -1242,6 +1459,11 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
    kbase_dev->dma_heap_fd = -1;
    kbase_dev->kcpu.fence_fd = -1;
    simple_mtx_init(&kbase_dev->kcpu.lock, mtx_plain);
+   simple_mtx_init(&kbase_dev->sync_exports.lock, mtx_plain);
+   kbase_dev->sync_exports.head = NULL;
+   kbase_dev->sync_exports.signaled_fd = -1;
+   kbase_dev->sync_exports.signaled_queue_id = 0;
+   kbase_dev->sync_exports.signaled_queue_valid = false;
 
    if (is_csf && kbase_query_csif_info(fd, &kbase_dev->csif_info)) {
       mesa_loge("kbase: failed to query the CSF global interface");
@@ -1249,6 +1471,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
       munmap(tracking_page, 4096);
       kbase_dev->base.flags &= ~PAN_KMOD_DEV_FLAG_OWNS_FD;
       pan_kmod_dev_cleanup(&kbase_dev->base);
+      simple_mtx_destroy(&kbase_dev->sync_exports.lock);
       simple_mtx_destroy(&kbase_dev->kcpu.lock);
       pan_kmod_free(allocator, kbase_dev);
       return NULL;
@@ -1275,7 +1498,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
    if (!dma_heap || !dma_heap[0])
       dma_heap = "/dev/dma_heap/system";
 
-   kbase_dev->dma_heap_fd = open(dma_heap, O_RDWR | O_CLOEXEC);
+   kbase_dev->dma_heap_fd = open(dma_heap, O_RDONLY | O_CLOEXEC);
    if (kbase_dev->dma_heap_fd < 0)
       mesa_logd("kbase: dma-heap unavailable at %s: %s", dma_heap,
                 strerror(errno));
@@ -1289,6 +1512,7 @@ kbase_kmod_dev_create(int fd, uint32_t flags,
        * NULL return), so don't let pan_kmod_dev_cleanup() close it too. */
       kbase_dev->base.flags &= ~PAN_KMOD_DEV_FLAG_OWNS_FD;
       pan_kmod_dev_cleanup(&kbase_dev->base);
+      simple_mtx_destroy(&kbase_dev->sync_exports.lock);
       simple_mtx_destroy(&kbase_dev->kcpu.lock);
       pan_kmod_free(allocator, kbase_dev);
       return NULL;
@@ -1324,6 +1548,11 @@ kbase_kmod_dev_destroy(struct pan_kmod_dev *dev)
    struct kbase_kmod_dev *kbase_dev =
       container_of(dev, struct kbase_kmod_dev, base);
 
+   simple_mtx_lock(&kbase_dev->sync_exports.lock);
+   kbase_sync_export_reap_locked(kbase_dev);
+   kbase_sync_export_discard_pending_locked(kbase_dev);
+   simple_mtx_unlock(&kbase_dev->sync_exports.lock);
+
    simple_mtx_lock(&kbase_dev->kcpu.lock);
    if (kbase_dev->kcpu.fence_fd >= 0)
       close(kbase_dev->kcpu.fence_fd);
@@ -1334,7 +1563,8 @@ kbase_kmod_dev_destroy(struct pan_kmod_dev *dev)
       ioctl(dev->fd, KBASE_IOCTL_KCPU_QUEUE_DELETE, &delete);
    }
    simple_mtx_unlock(&kbase_dev->kcpu.lock);
-   simple_mtx_destroy(&kbase_dev->kcpu.lock);
+   simple_mtx_destroy(&kbase_dev->sync_exports.lock);
+      simple_mtx_destroy(&kbase_dev->kcpu.lock);
 
    if (kbase_dev->user_reg_page)
       munmap(kbase_dev->user_reg_page, 4096);
