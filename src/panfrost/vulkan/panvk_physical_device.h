@@ -117,6 +117,17 @@ typedef VkResult (*panvk_kbase_sync_export_func)(
    const uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT],
    int *sync_file);
 
+struct panvk_kbase_sync_pending_payload {
+   void *data;
+   panvk_kbase_sync_wait_func wait;
+   panvk_kbase_sync_export_func export_sync_file;
+   uint64_t targets[PANVK_KBASE_SYNC_TARGET_COUNT];
+};
+
+bool panvk_kbase_sync_get_pending_payload(
+   struct vk_sync *sync,
+   struct panvk_kbase_sync_pending_payload *payload);
+
 void panvk_kbase_sync_set_pending(
    struct vk_sync *sync, void *data, panvk_kbase_sync_wait_func wait,
    panvk_kbase_sync_export_func export_sync_file,

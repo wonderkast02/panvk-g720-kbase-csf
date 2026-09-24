@@ -752,6 +752,32 @@ panvk_kbase_sync_set_pending(
    mtx_unlock(&ks->mutex);
 }
 
+bool
+panvk_kbase_sync_get_pending_payload(
+   struct vk_sync *sync,
+   struct panvk_kbase_sync_pending_payload *payload)
+{
+   if (!sync || !payload ||
+       sync->type->wait_many != kbase_cpu_sync_wait_many)
+      return false;
+
+   struct kbase_cpu_sync *ks = container_of(sync, struct kbase_cpu_sync, sync);
+
+   mtx_lock(&ks->mutex);
+   bool pending = ks->state == KBASE_CPU_SYNC_PENDING &&
+                  ks->pending_data != NULL &&
+                  ks->pending_wait != NULL;
+   if (pending) {
+      payload->data = ks->pending_data;
+      payload->wait = ks->pending_wait;
+      payload->export_sync_file = ks->pending_export;
+      memcpy(payload->targets, ks->targets, sizeof(payload->targets));
+   }
+   mtx_unlock(&ks->mutex);
+
+   return pending;
+}
+
 static VkResult
 kbase_cpu_sync_wait_one(struct vk_device *device, struct kbase_cpu_sync *ks,
                         enum vk_sync_wait_flags wait_flags,
