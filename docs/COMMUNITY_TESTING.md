@@ -2,21 +2,26 @@
 
 ## Beta pública atual
 
-Release: **`0.1.0-beta.1.9.4`**
+Release: **`0.1.0-beta.2`**
+
+Release page:
+https://github.com/wonderkast02/panvk-g720-kbase-csf/releases/tag/0.1.0-beta.2
 
 Pacote oficial:
 
-`PanVK-G720-0.1.0-beta.1.9.4.zip`
+`PanVK-G720-0.1.0-beta.2.zip`
 
 SHA-256 esperado:
 
-`01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`
+`fc1d69647c071ca3fe30ae2fb450e95c91c08e90779eb32c865fa384dff5aaca`
 
 Verifique antes do teste:
 
 ```sh
-sha256sum PanVK-G720-0.1.0-beta.1.9.4.zip
+sha256sum PanVK-G720-0.1.0-beta.2.zip
 ```
+
+O resultado deve ser exatamente o hash acima.
 
 Não repacke ou edite o ZIP quando o objetivo for produzir um resultado atribuível à release oficial.
 
@@ -32,21 +37,34 @@ Inclua:
 6. tag exata do PanVK;
 7. SHA-256 exato do pacote;
 8. runtime: native / Winlator / Vortek / Wine / Box64;
-9. versão do wrapper, quando aplicável;
-10. DXVK/VKD3D, quando aplicável;
+9. versão do wrapper/Winlator quando aplicável;
+10. DXVK/VKD3D quando aplicável;
 11. aplicação/jogo;
-12. passos exatos para reprodução;
-13. logs com timestamps;
-14. se houve reboot, abort da aplicação, hang, device lost ou apenas falha do processo de teste.
+12. resolução e configurações relevantes;
+13. passos exatos para reprodução;
+14. logs com timestamps;
+15. se houve reboot, abort da aplicação, hang, device lost, artefato visual ou apenas falha do processo de teste;
+16. se o problema reproduz com instrumentação/logging desativada.
+
+## Problemas de renderização e performance
+
+Para artefatos, glitches ou quedas de FPS:
+
+- descreva a cena exata;
+- informe se o problema é determinístico;
+- capture frametime quando possível;
+- compare apenas ambientes que diferem em uma variável controlada;
+- não trate FPS alto como sucesso quando a imagem está incorreta;
+- não atribua automaticamente a causa ao PanVK sem evidência.
 
 ## Builds de desenvolvimento
 
-Se um build de desenvolvimento for compartilhado para teste dirigido, registre também:
+Se um build interno for compartilhado para teste dirigido, registre também:
 
 - nome técnico exato do artefato;
 - SHA-256 do pacote;
 - feature/boundary em teste;
-- diferença em relação à beta pública.
+- diferença em relação à Beta 2.
 
 Não descreva um build interno como nova beta sem publicação oficial.
 

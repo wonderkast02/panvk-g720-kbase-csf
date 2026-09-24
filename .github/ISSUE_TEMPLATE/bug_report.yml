@@ -8,7 +8,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for testing PanVK G720. Preserve the original release ZIP and attach only relevant, non-sensitive logs.
+        Thanks for testing PanVK G720.
+        Current public beta: `0.1.0-beta.2`.
+        Preserve the original release ZIP and attach only relevant, non-sensitive logs.
   - type: input
     id: device
     attributes:
@@ -38,14 +40,14 @@ body:
     id: release
     attributes:
       label: PanVK release tag
-      value: 0.1.0-beta.1.9.4
+      value: 0.1.0-beta.2
     validations:
       required: true
   - type: input
     id: sha
     attributes:
       label: Driver ZIP SHA-256
-      placeholder: 64 hexadecimal characters
+      placeholder: fc1d69647c071ca3fe30ae2fb450e95c91c08e90779eb32c865fa384dff5aaca
     validations:
       required: true
   - type: dropdown
@@ -86,7 +88,7 @@ body:
     id: observed
     attributes:
       label: Observed result
-      description: State exactly what happened, including whether the app aborted, GPU faulted, or device rebooted.
+      description: State exactly what happened, including visual artifacts, FPS/frametime changes, app abort, GPU fault, device lost, or reboot.
     validations:
       required: true
   - type: textarea

@@ -1,81 +1,79 @@
 # Proveniência de fonte e artefatos
 
-A proveniência pública e a linha de desenvolvimento pós-release são mantidas separadas.
+A proveniência pública separa claramente:
 
-## Release pública `0.1.0-beta.1.9.4`
+1. snapshot da tag;
+2. autoridade técnica que produziu o binário;
+3. estado atual da branch de desenvolvimento;
+4. releases históricas.
 
-### Cadeia de fonte congelada
+## Beta 2 — release pública atual
 
-`ci 0521a3257628e811cfead6b5a9753e9f705e2f31`
-→ staging Android/Bionic
-→ deltas MC8 validados
-→ composição FullPlane
-→ Kbase dma-heap device-node `O_RDONLY`.
+### Git / source snapshot
 
-A release pública está vinculada a:
+- tag: `0.1.0-beta.2`
+- tag target: `f1d7bed571766c49e5dd464f92d1fda264612311`
+- tree: `6e36b7712fdf71c28d73092c68370dbfd4b95bc8`
+- GitHub release ID: `396132659`
+
+O commit `f1d7bed...` é o snapshot selecionado para a tag e contém o código técnico já qualificado mais documentação sincronizada.
+
+### Autoridade técnica do binário
+
+O ELF distribuído foi produzido e qualificado no commit:
+
+- commit: `980ac91de74df5e5807e6269fd2531fa3ee6b4e5`
+- tree: `06d46e5ff29783c47740ab2da0d6f54db4fcff21`
+- commit subject: `panvk: integrate validated internal GPU WAIT64 waits`
+
+O commit `f1d7bed...` é filho documental de `980ac91...`; não altera os source bytes que produziram o ELF.
+
+### Artefatos Beta 2
+
+- package: `PanVK-G720-0.1.0-beta.2.zip`
+- package SHA-256: `fc1d69647c071ca3fe30ae2fb450e95c91c08e90779eb32c865fa384dff5aaca`
+- embedded SO SHA-256: `126b8b6124a8677298469f520cd6c825de88b498fe93a38bd358ef3b557882d3`
+- embedded SO size: `21,497,392`
+- `meta.json` SHA-256: `3b6590d07bd082c2b4600dbf264d886f55b42bffe6140bac5ab11ea748bd82ae`
+- manifest SHA-256: `82d1436ef6873a184c8ac2f142d7b48e0437763fec52c32107f37939b7b0606b`
+- `SHA256SUMS.txt` SHA-256: `6eab6525234519d8c5ba6bb99a54222272e0e9e2328754fd9b758b26adad4f7e`
+
+A qualificação final incluiu build alvo, full build, Meson test, auditoria ELF e roundtrip dos assets publicados.
+
+## Desenvolvimento após a tag
+
+A branch `g720-development` está atualmente em:
+
+- commit: `ca163891e8d3367c4b65ecaf7dcb7452545f4172`
+- tree: `70a09e9f88f5fe7ed595f3bf3347f5b32173daf9`
+
+Esse commit é uma sincronização documental pós-release. A autoridade técnica do binário Beta 2 não muda.
+
+## WAIT64 interno
+
+O caminho promovido em `980ac91...` é deliberadamente estreito:
+
+- payloads binários locais/internos PanVK elegíveis podem usar GPU `SYNC64`/WAIT64;
+- condição validada: `GREATER(target - 1)`;
+- até três wait cells por submit path;
+- waits são emitidos antes da aquisição de recursos;
+- `sync_file` importado, timeline wrappers, conjuntos mistos, wait-only e oversized permanecem no fallback CPU/KCPU.
+
+## Beta 1.9.4 histórica
+
+A release histórica continua vinculada a:
 
 - branch: `android-candidate-beta-1.9.4`
 - source commit: `3549264275c9663ed73e01d652f4c0d16f21df22`
-- tag: `refs/tags/0.1.0-beta.1.9.4`
+- tag: `0.1.0-beta.1.9.4`
 - package SHA-256: `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`
 - embedded SO SHA-256: `05f867332924aacd91e6182cc1cc572ff04689cbcebeeba0e70bef61698dc9de`
-- `meta.json` SHA-256: `01ef6b466751a5cb375073319ed70f872763ab71858b767c24d4ae9e737dae90`
-- GNU Build ID: `4bc1dcd6ade70537a80e64bfc4976cb5936bf2af`
 
-Esses valores não são modificados por desenvolvimento posterior.
-
-### Estado Bionic preservado
-
-- `src/panfrost/vulkan/panvk_device.h`: `dedd6ed1c96b46829c1d52c395d79608528dc8ff120640dc64ae116f6c810038`
-- `src/util/u_gralloc/meson.build`: `da7bd6bcc7c2695284b4ec349bc259028a68a755ac0f7e1ae2f7b74efc463a43`
-
-### Fingerprints MC8 históricos
-
-- semantic fingerprint: `ad3f9fceb4ccd2b45e39a3893288fcf18cbc0b87c8aa98a827b05b88a67123ca`
-- modified-path fingerprint: `97654e435d7e7662bde9e16692275dd5715d2455441de2cd9bbe2d1738afedcb`
-
-### Composição final histórica da beta
-
-- `src/util/u_gralloc/u_gralloc_fallback.c`: `7cf289004480183564a34b1f2e80690c32a0c42be74cb0b9b81ba07aff7d9fdc`
-- `src/panfrost/lib/kmod/kbase_kmod.c`: `140b334c29a8999816e0084ce8b534b2171128a1da3de078e7b7509bf7431fe7`
-
-A semântica Kbase é intencionalmente estreita: o **device node** do dma-heap é aberto `O_RDONLY | O_CLOEXEC`; a alocação DMA-HEAP continua retornando dma-buf FDs com `O_RDWR | O_CLOEXEC`.
-
-`DRM_FORMAT_MOD_INVALID -> DRM_FORMAT_MOD_LINEAR` por suposição continua proibido.
-
-## Linha de desenvolvimento pós-beta
-
-O desenvolvimento posterior à beta avançou para Tessellation e Geometry Shader mais completos e concluiu o closeout funcional de GS no hardware de referência.
-
-Essa linha **não possui vínculo público de release novo neste documento**.
-
-Até que um novo candidato seja explicitamente escolhido:
-
-- não atribuir nova beta;
-- não criar tag por conveniência;
-- não reutilizar a identidade da beta atual para bytes diferentes;
-- não substituir hashes publicados;
-- preservar a autoridade de fonte/build/runtime separadamente;
-- registrar hashes e source binding antes de qualquer release futura.
-
-## Autoridade de desenvolvimento pós-GS
-
-A consolidação pós-GS atualmente publicada é:
-
-- branch: `g720-development`;
-- commit autoritativo: `77832026e87fc39a48d691dd5a46e9908726b0bf`;
-- pai/base congelada: `0521a3257628e811cfead6b5a9753e9f705e2f31` (`ci`);
-- delta: **22 paths** de source sobre o checkpoint congelado;
-- qualificação externa registrada no GitHub: `Drive-G720/PPA6-audit = success`;
-- proteção: force-push e deleção desativados, histórico linear e enforcement para admins ativos.
-
-O commit permanece **unsigned** e não é reescrito apenas para obter assinatura, porque reescrevê-lo mudaria o SHA já utilizado como autoridade. Uma assinatura ausente não substitui nem invalida a cadeia de evidência externa existente.
-
-Esse commit é autoridade de **desenvolvimento**, não nova beta, tag ou release pública.
+Esses valores são históricos e não são modificados pela Beta 2.
 
 ## Build reproduzível
 
-O repositório Git sozinho não é tratado como imagem hermética de build. Reproduzir os mesmos bytes também depende do ambiente externo documentado: Android NDK/API, Meson, toolchain e dependências locais pertinentes.
+O repositório Git sozinho não é uma imagem hermética de build. Reproduzir os mesmos bytes também depende do ambiente externo documentado, incluindo Android NDK/API, Meson, toolchain e dependências locais pertinentes.
 
 ## Licenciamento
 

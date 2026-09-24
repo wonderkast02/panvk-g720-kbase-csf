@@ -1,56 +1,84 @@
 # PanVK G720 — Estado atual
 
-Atualizado em: **2026-09-21**
+Atualizado em: **2026-09-24**
 
 ## Resumo
 
-O projeto mantém duas realidades deliberadamente separadas:
+O estado público atual é:
 
-- **release pública atual:** `0.1.0-beta.1.9.4`;
-- **linha de desenvolvimento pós-beta:** Geometry Shader funcionalmente fechado em hardware de referência, seguida por consolidação de source tree, regressões e compatibilidade.
+- **release pública:** `0.1.0-beta.2`;
+- **título:** `PanVK G720 0.1.0 Beta 2`;
+- **classe GitHub:** Pre-release;
+- **tag / source snapshot:** `f1d7bed571766c49e5dd464f92d1fda264612311`;
+- **branch de desenvolvimento:** `g720-development` em `ca163891e8d3367c4b65ecaf7dcb7452545f4172`;
+- **autoridade técnica do binário:** `980ac91de74df5e5807e6269fd2531fa3ee6b4e5`.
 
-O fechamento pós-beta **não altera os bytes, a tag ou a identidade da release pública existente** e não autoriza por si só uma nova beta.
+A Beta 2 adota a sequência SemVer convencional `0.1.0-beta.N`.
 
 ## Layout do repositório
 
-- `main`: landing pública e documentação;
-- `g720-development`: autoridade de desenvolvimento pós-GS, commit `77832026e87fc39a48d691dd5a46e9908726b0bf`;
+- `main`: landing pública e documentação ativa;
+- `g720-development`: source authority de desenvolvimento e integração;
 - `ci`: checkpoint histórico full-Mesa `0521a3257628e811cfead6b5a9753e9f705e2f31`;
-- `android-candidate-beta-1.9.4`: fonte congelada da release pública `0.1.0-beta.1.9.4`.
+- `android-candidate-beta-1.9.4`: lineage histórica congelada da Beta 1.9.4.
 
-`main` e `ci` preservam históricos distintos; não devem ser mesclados ou reescritos apenas para “normalizar” o grafo.
+`main` e `g720-development` têm funções diferentes e não devem ser fundidos apenas para estética do grafo.
 
-## Release pública
+## Beta 2
 
-A release pública atual permanece **`0.1.0-beta.1.9.4`**, publicada como **GitHub Pre-release / Public Beta**.
+Release ID GitHub: `396132659`
 
-- source commit: `3549264275c9663ed73e01d652f4c0d16f21df22`
-- pacote: `PanVK-G720-0.1.0-beta.1.9.4.zip`
-- ZIP SHA-256: `01c6304206c6e348cb069e3d04fb1c7b693195b543b4134ad7c108a33906d1fa`
-- SO limpo SHA-256: `05f867332924aacd91e6182cc1cc572ff04689cbcebeeba0e70bef61698dc9de`
-- raw candidate SO SHA-256: `54a3a7dc9c972cc364058846e9b7ede57d4ac32d0902e8c8288e8fe89b9bb9bb`
-- `meta.json` SHA-256: `01ef6b466751a5cb375073319ed70f872763ab71858b767c24d4ae9e737dae90`
-- GNU Build ID: `4bc1dcd6ade70537a80e64bfc4976cb5936bf2af`
-- API Android mínimo: `35`
+### Source
 
-Esses identificadores permanecem imutáveis para essa release.
+- tag: `0.1.0-beta.2`
+- tag target: `f1d7bed571766c49e5dd464f92d1fda264612311`
+- tree do tag target: `6e36b7712fdf71c28d73092c68370dbfd4b95bc8`
+- commit técnico que produziu o binário qualificado: `980ac91de74df5e5807e6269fd2531fa3ee6b4e5`
+- tree técnico: `06d46e5ff29783c47740ab2da0d6f54db4fcff21`
 
-## Linha de desenvolvimento pós-beta
+### Artefatos
 
-Desde a publicação da beta, a linha de desenvolvimento avançou além do estado documentado em 2026-09-01.
+- pacote: `PanVK-G720-0.1.0-beta.2.zip`
+- package SHA-256: `fc1d69647c071ca3fe30ae2fb450e95c91c08e90779eb32c865fa384dff5aaca`
+- embedded `libvulkan_panfrost.so` SHA-256: `126b8b6124a8677298469f520cd6c825de88b498fe93a38bd358ef3b557882d3`
+- embedded SO size: `21,497,392` bytes
+- `meta.json` SHA-256: `3b6590d07bd082c2b4600dbf264d886f55b42bffe6140bac5ab11ea748bd82ae`
+- manifest SHA-256: `82d1436ef6873a184c8ac2f142d7b48e0437763fec52c32107f37939b7b0606b`
+- `SHA256SUMS.txt` SHA-256: `6eab6525234519d8c5ba6bb99a54222272e0e9e2328754fd9b758b26adad4f7e`
+- Android API mínimo: `35`
 
-O escopo dirigido de Geometry Shader foi fechado funcionalmente no hardware de referência, incluindo combinações relevantes com tessellation, transform feedback e layered rendering. Essa linha permanece **desenvolvimento**, não uma release pública nova.
+## Recursos relevantes da Beta 2
 
-Estado operacional atual:
+No escopo qualificado:
 
-- Geometry Shader: **fechamento funcional concluído**;
-- source tree pós-GS: **consolidada e publicada em `g720-development`**;
-- qualificação externa: **`Drive-G720/PPA6-audit = success`** para o commit autoritativo de 22 paths;
-- proteção da branch: **force-push e deleção bloqueados; histórico linear e enforcement para admins ativos**;
-- nova beta: **não atribuída**;
-- nova tag: **não criada**;
-- release pública nova: **não autorizada**;
-- otimização: posterior à estabilização funcional e às regressões necessárias.
+- Geometry Shader exposto;
+- Tessellation exposta;
+- direct tessellation com validação dirigida de hardware/semântica;
+- GPU WAIT64 para dependências binárias locais/internas elegíveis;
+- fallback CPU/KCPU preservado para `sync_file` importado, timeline wrappers, conjuntos mistos, wait-only e conjuntos acima do limite.
+
+Isso não é claim de conformidade Vulkan.
+
+## Desenvolvimento após a tag
+
+Após o snapshot da tag, `g720-development` recebeu apenas a sincronização documental pós-release:
+
+- commit: `ca163891e8d3367c4b65ecaf7dcb7452545f4172`
+- tree: `70a09e9f88f5fe7ed595f3bf3347f5b32173daf9`
+
+A autoridade técnica do binário distribuído permanece `980ac91...`.
+
+## Beta 1.9.4 histórica
+
+A tag `0.1.0-beta.1.9.4` e seus assets permanecem imutáveis como registro histórico. Não reutilizar essa identidade para bytes diferentes.
+
+## Foco atual
+
+- regressões e logs da comunidade;
+- bugs reproduzíveis de renderização/sincronização;
+- Winlator / Vortek / DXVK;
+- CTS focado e regressões;
+- performance somente após correctness.
 
 ## Limite de claims
 
@@ -62,4 +90,4 @@ O projeto não declara:
 - que resultados do MC8 representam toda variante G720;
 - que uma feature presente em driver proprietário existe automaticamente no PanVK.
 
-Consulte também [VALIDATION.md](VALIDATION.md), [PROVENANCE.md](PROVENANCE.md) e [VERSIONING.md](VERSIONING.md).
+Consulte também [VALIDATION.md](VALIDATION.md), [PROVENANCE.md](PROVENANCE.md), [RELEASES.md](RELEASES.md) e [VERSIONING.md](VERSIONING.md).

@@ -28,11 +28,33 @@ Responsável pela API Vulkan, compilação de shaders, estado gráfico, command 
 
 ### Backend Kbase
 
-Faz a ponte userspace com `/dev/mali0` e a UAPI Kbase necessária para memória, propriedades, filas e submissão.
+Faz a ponte userspace com `/dev/mali0` e a UAPI Kbase necessária para memória, propriedades, filas, sincronização e submissão.
 
 ### CSF / KMD
 
 A infraestrutura Command Stream Frontend e o kernel driver executam a comunicação de baixo nível com a GPU.
+
+## Sincronização interna
+
+Na autoridade técnica atual, dependências binárias locais/internas PanVK elegíveis podem permanecer na GPU:
+
+```text
+producer → local binary payload → CS SYNC64/WAIT64 → consumer
+```
+
+Contrato qualificado:
+
+- `GREATER(target - 1)`;
+- no máximo três wait cells por submit path;
+- waits emitidos antes da aquisição de recursos.
+
+Não é substituição da sincronização externa. Continuam no fallback CPU/KCPU:
+
+- imported `sync_file`;
+- timeline wrappers;
+- mixed wait sets;
+- wait-only submits;
+- oversized wait sets.
 
 ## Compatibilidade externa
 
@@ -54,6 +76,7 @@ Uma falha nessas camadas não é automaticamente uma falha PanVK.
 - separar emulação/wrapper de suporte nativo;
 - manter Kbase/CSF-specific behavior em camada apropriada;
 - validar runtime no hardware;
+- correctness antes de performance;
 - tratar compatibilidade de jogo como camada posterior à correção do driver.
 
 ## Hardware de referência

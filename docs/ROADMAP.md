@@ -19,14 +19,18 @@ Este roadmap descreve direção técnica, não promessa de prazo ou de versão p
 - [x] Tessellation + GS
 - [x] Transform Feedback + GS no escopo qualificado
 - [x] Layered GS no escopo qualificado
+- [x] consolidação pós-GS em `g720-development`
+- [x] build limpo + Meson test da autoridade técnica atual
+- [x] promoção do GPU WAIT64 interno
+- [x] Beta 2 qualificada e publicada
+- [x] documentação da branch de desenvolvimento sincronizada após Beta 2
 
-## Fase atual
+## Fase atual — regressões e compatibilidade
 
-- [x] consolidar árvore pós-GS em `g720-development`;
-- [ ] garantir que o diff final contenha apenas código de produção;
-- [x] preservar autoridade/proveniência da source tree pós-GS;
-- [ ] ampliar a prova de reprodutibilidade com fresh clone → build controlado;
-- [ ] melhorar reprodutibilidade;
+- [ ] triar logs da comunidade por pacote/runtime/hardware;
+- [ ] reproduzir artefatos visuais e regressões de frametime;
+- [ ] separar driver, DXVK, runtime, transporte e aplicação;
+- [ ] corrigir bugs com primeiro-fail causal;
 - [ ] ampliar regressões sem reabrir casos fechados sem causa real.
 
 ## Compatibilidade
@@ -34,7 +38,8 @@ Este roadmap descreve direção técnica, não promessa de prazo ou de versão p
 - [ ] fortalecer Winlator / Vortek;
 - [ ] reavaliar DXVK com o contrato de features atual;
 - [ ] validar Wine / Box64 e workloads Windows de forma dirigida;
-- [ ] separar bugs de driver, wrapper, transporte e aplicação.
+- [ ] documentar matriz por runtime e versão;
+- [ ] manter correctness antes de performance.
 
 ## Cobertura
 
@@ -45,14 +50,21 @@ Este roadmap descreve direção técnica, não promessa de prazo ou de versão p
 
 ## Performance
 
-Performance vem depois da correção funcional:
+Somente após renderização correta e sincronização estável:
 
 - [ ] profiling;
 - [ ] eliminar gargalos comprovados;
 - [ ] reduzir overhead;
 - [ ] comparar regressões com baseline controlado;
-- [ ] medir jogos somente quando renderização estiver correta.
+- [ ] medir jogos com cenário reproduzível.
 
 ## Releases
 
-Nenhuma nova beta é criada por avanço interno isolado. Release pública exige candidato congelado, proveniência, hashes, qualificação e autorização explícita.
+Release pública atual: `0.1.0-beta.2`.
+
+A próxima beta convencional é `0.1.0-beta.3`, mas só será criada se houver:
+
+1. candidato público congelado;
+2. proveniência e hashes;
+3. qualificação suficiente;
+4. decisão explícita de lançamento.

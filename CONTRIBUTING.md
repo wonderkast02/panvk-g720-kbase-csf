@@ -16,10 +16,13 @@ Leia:
 ## Layout do repositório
 
 - `main`: documentação pública e landing ativa;
+- `g720-development`: branch ativa de source/desenvolvimento;
 - `ci`: checkpoint histórico full-Mesa;
-- `android-candidate-beta-1.9.4`: fonte congelada da beta pública.
+- `android-candidate-beta-1.9.4`: source lineage histórica congelada.
 
-Não envie mudanças comuns diretamente para branches congeladas.
+Release pública atual: `0.1.0-beta.2`.
+
+Não envie mudanças comuns para branches históricas congeladas.
 
 ## Bug reports
 
@@ -48,7 +51,8 @@ Uma alteração útil deve:
 4. incluir evidência de build/runtime compatível com o risco da mudança;
 5. preservar proveniência e versionamento;
 6. evitar refactors não relacionados durante correções causais;
-7. nunca converter `DRM_FORMAT_MOD_INVALID` em `DRM_FORMAT_MOD_LINEAR` por suposição.
+7. nunca converter `DRM_FORMAT_MOD_INVALID` em `DRM_FORMAT_MOD_LINEAR` por suposição;
+8. priorizar correctness antes de performance.
 
 ## Mudanças de documentação
 
@@ -60,7 +64,7 @@ Documentação deve separar claramente:
 - inferência;
 - limitações.
 
-Não transforme um resultado interno em claim público mais amplo.
+Não transforme resultado interno em claim público mais amplo.
 
 ## Claims
 

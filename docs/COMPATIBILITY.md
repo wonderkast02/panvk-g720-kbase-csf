@@ -2,6 +2,15 @@
 
 Este documento preserva experimentos históricos e fronteiras de compatibilidade sem misturá-los à arquitetura interna do PanVK.
 
+## Estado público atual
+
+A release pública atual é `0.1.0-beta.2`.
+
+- package SHA-256: `fc1d69647c071ca3fe30ae2fb450e95c91c08e90779eb32c865fa384dff5aaca`
+- Geometry Shader e Tessellation fazem parte do estado de feature atual da linha Beta 2;
+- Winlator, Vortek, Wine, Box64, DXVK e VKD3D permanecem **camadas externas experimentais**;
+- compatibilidade com jogos deve ser avaliada por runtime/versão/cenário, não inferida do feature table.
+
 ## Box64 / Wine
 
 Validações históricas incluíram:
@@ -34,8 +43,6 @@ Esses resultados são provas de conceito e não equivalem a compatibilidade univ
 
 ## DXVK — investigação histórica
 
-O projeto usou DXVK em diferentes fases.
-
 Um estado histórico de DXVK stock rejeitava o adapter PanVK por ausência de features Vulkan exigidas naquele momento, incluindo:
 
 - `geometryShader`
@@ -44,13 +51,13 @@ Um estado histórico de DXVK stock rejeitava o adapter PanVK por ausência de fe
 - `shaderCullDistance`
 - `textureCompressionBC`
 
-Esse registro descreve aquele ponto do desenvolvimento. Features implementadas posteriormente devem ser avaliadas pelo estado atual do driver, sem reescrever o contexto histórico.
+Esse registro descreve aquele ponto do desenvolvimento. A Beta 2 já anuncia `geometryShader`, mas isso não implica que todos os requisitos de toda versão do DXVK estejam satisfeitos.
 
 ### G720 LAB
 
-Foi usado um patch experimental de investigação denominado **G720 LAB** para contornar a rejeição inicial do adapter.
+Foi usado um patch experimental de investigação para contornar a rejeição inicial do adapter.
 
-O patch **não implementava** as features faltantes; ele permitia investigar o que acontecia após o gate inicial.
+O patch **não implementava** as features faltantes; permitia investigar o comportamento após o gate inicial.
 
 Naquele experimento foram observados:
 
@@ -75,17 +82,11 @@ Em investigação histórica no hardware de referência:
 
 Conclusão no escopo daquela medição: o caminho Kbase/CSF observado não anunciava BC1–BC7 através desses bits.
 
-O fato de um driver proprietário ou wrapper anunciar `textureCompressionBC` não prova suporte nativo de hardware no PanVK. Pode haver emulação, decompression/transcode ou outra camada de compatibilidade.
-
-Portanto:
-
 > Não forçar `textureCompressionBC=true` sem implementação real e validação.
 
-## Driver proprietário / GameNative como controle positivo
+## Driver proprietário / wrappers como controle
 
-Caminhos proprietários ou wrappers no mesmo hardware podem anunciar features que não correspondem diretamente ao contrato nativo do PanVK.
-
-Essas camadas podem, por exemplo:
+Caminhos proprietários ou wrappers podem:
 
 - virtualizar features;
 - transformar SPIR-V;
@@ -97,48 +98,7 @@ Feature observada em wrapper não deve ser copiada para o PanVK apenas por adver
 
 ## `bionic-vulkan-wrapper`
 
-O wrapper público estudado historicamente foi usado para compreender:
-
-- virtualização de algumas features Vulkan;
-- caminhos de emulação BCn;
-- transformação de SPIR-V;
-- lowering relacionado a Clip/Cull.
-
-Não assumir que um wrapper implementa integralmente GS, multiview, multiViewport ou qualquer outra feature sem evidência específica.
-
-## Port Bionic → glibc
-
-Houve uma PoC para portar o wrapper para AArch64/glibc:
-
-```text
-DXVK / Vulkan loader
-       ↓
-libvulkan_wrapper.so
-       ↓
-libvulkan_panfrost.so
-       ↓
-Kbase
-       ↓
-Mali-G720
-```
-
-Problemas históricos tratados nessa frente incluíram:
-
-- Android availability macros;
-- C11 threads / `HAVE_THRD_CREATE`;
-- `once_flag`;
-- `memfd_create`;
-- `getrandom`;
-- const correctness com Clang;
-- `cnd_monotonic`;
-- `u_printf`;
-- WSI/AHardwareBuffer no build X11;
-- `fcntl/open`;
-- `buffer_handle_t`;
-- `getprogname`;
-- `size_t` em `spirv_edit.h`.
-
-O snapshot histórico chegou ao link final de `libvulkan_wrapper.so`, ainda com dependência de passes customizados do SPIRV-Tools naquele checkpoint.
+O wrapper público estudado historicamente foi usado para compreender virtualização/emulação de features e transformação SPIR-V.
 
 O wrapper deixou de ser arquitetura recomendada quando o caminho PanVK nativo se tornou o foco principal.
 
@@ -146,16 +106,29 @@ O wrapper deixou de ser arquitetura recomendada quando o caminho PanVK nativo se
 
 Winlator e Vortek são ambientes de integração/compatibilidade.
 
-Na beta pública `0.1.0-beta.1.9.4`, o run congelado chegou ao primeiro `vkQueueSubmit`, mas não chegou a acquire/present.
+### Beta 2
 
-Desenvolvimento posterior deve ser comparado usando bytes e hashes exatos; não misture o estado da beta pública com builds pós-beta.
+Resultados comunitários da Beta 2 devem registrar:
+
+- tag `0.1.0-beta.2`;
+- package SHA exato;
+- versão Winlator/Vortek;
+- DXVK/VKD3D;
+- resolução/configuração;
+- logs e frametime quando relevante.
+
+Artefatos visuais ou quedas de FPS precisam de reprodução causal antes de serem atribuídos ao PanVK.
+
+### Beta 1.9.4 — histórico
+
+No run congelado histórico de `0.1.0-beta.1.9.4`, a execução chegou ao primeiro `vkQueueSubmit`, mas não a acquire/present.
+
+Esse dado continua válido apenas para os bytes daquela release histórica.
 
 ## Regra causal
-
-Ao diagnosticar compatibilidade:
 
 - falha de aplicação != falha do driver automaticamente;
 - falha de wrapper != falha PanVK automaticamente;
 - falha de transporte != falha PanVK automaticamente;
-- renderização incorreta invalida qualquer claim de ganho de performance;
+- renderização incorreta invalida claim de ganho de performance;
 - correctness vem antes de FPS.

@@ -13,17 +13,33 @@ For source code derived from Mesa, the authoritative licensing information is:
 3. component-specific license files or notices where applicable;
 4. original copyright notices and attribution retained in the source.
 
-The frozen source lineage for the current public beta is:
+## Current public beta source snapshot
+
+The current public beta is `0.1.0-beta.2`.
+
+Its source snapshot is:
+
+- tag: `0.1.0-beta.2`
+- commit: `f1d7bed571766c49e5dd464f92d1fda264612311`
+- technical binary authority: `980ac91de74df5e5807e6269fd2531fa3ee6b4e5`
+
+The documentation-only difference between the tag snapshot and the technical binary authority does not alter the licensing metadata carried by the underlying source files.
+
+Relevant source locations at the public tag include:
+
+- [`docs/license.rst`](https://github.com/wonderkast02/panvk-g720-kbase-csf/blob/0.1.0-beta.2/docs/license.rst)
+- [`licenses/`](https://github.com/wonderkast02/panvk-g720-kbase-csf/tree/0.1.0-beta.2/licenses)
+
+Mesa's licensing documentation states that the distribution contains multiple components, different licenses may apply to different components, and individual source-file SPDX identifiers should be consulted.
+
+## Historical Beta 1.9.4
+
+The historical `0.1.0-beta.1.9.4` source lineage remains frozen:
 
 - branch: `android-candidate-beta-1.9.4`
 - commit: `3549264275c9663ed73e01d652f4c0d16f21df22`
 
-Mesa's own licensing documentation in that source lineage states that the distribution contains multiple components, that different licenses may apply to different components, and that individual source-file SPDX identifiers should be consulted for the applicable terms.
-
-Relevant source locations include:
-
-- [`docs/license.rst`](https://github.com/wonderkast02/panvk-g720-kbase-csf/blob/android-candidate-beta-1.9.4/docs/license.rst)
-- [`licenses/`](https://github.com/wonderkast02/panvk-g720-kbase-csf/tree/android-candidate-beta-1.9.4/licenses)
+Nothing in the Beta 2 documentation changes the licensing terms or provenance of that historical release.
 
 ## Current PanVK G720 changes
 
@@ -37,7 +53,7 @@ No statement in this document:
 - removes or changes an original copyright notice;
 - relicenses third-party or upstream code;
 - assigns MIT, Apache-2.0, or any other single license to the repository as a whole;
-- changes the licensing terms of the published `0.1.0-beta.1.9.4` binaries or their corresponding source components.
+- changes the licensing terms of any published binary or corresponding source component.
 
 ## Project-authored material
 
@@ -53,4 +69,4 @@ When adding a new file derived from existing Mesa/PanVK code, follow the licensi
 
 ## Release provenance
 
-The current public beta remains tied to its immutable release, exact source lineage, and recorded asset digests. Licensing documentation does not alter release bytes, source history, or provenance.
+Release provenance, source history, and asset digests are documented separately in `docs/PROVENANCE.md`. Licensing documentation does not alter release bytes or source history.

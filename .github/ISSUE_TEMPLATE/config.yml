@@ -3,6 +3,6 @@ contact_links:
   - name: Community discussion / support
     url: https://github.com/wonderkast02/panvk-g720-kbase-csf/discussions
     about: Questions, compatibility discussion and non-bug community feedback.
-  - name: Current public beta
-    url: https://github.com/wonderkast02/panvk-g720-kbase-csf/releases/tag/0.1.0-beta.1.9.4
-    about: Download the exact current release and integrity files.
+  - name: Current public beta — 0.1.0-beta.2
+    url: https://github.com/wonderkast02/panvk-g720-kbase-csf/releases/tag/0.1.0-beta.2
+    about: Download the exact current Beta 2 release and integrity files.

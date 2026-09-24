@@ -1,6 +1,6 @@
 # Kbase / CSF — hardware e bring-up
 
-Este documento preserva os detalhes técnicos de baixo nível retirados do README principal.
+Este documento preserva detalhes técnicos de baixo nível do caminho G720.
 
 ## Plataforma de referência
 
@@ -16,8 +16,6 @@ Este documento preserva os detalhes técnicos de baixo nível retirados do READM
 Esses valores descrevem o dispositivo de referência e não são requisitos universais de toda Mali-G720.
 
 ## UAPI / operações validadas
-
-A UAPI Kbase usada pelo Mesa foi comparada com o driver vendor e os caminhos relevantes do bring-up foram validados.
 
 Entre as operações confirmadas historicamente:
 
@@ -38,13 +36,13 @@ Incompatibilidade genérica de ioctl deixou de ser a hipótese principal após e
 
 ## Correção CSF específica observada na G720
 
-Um problema histórico importante estava na suposição de quantidade fixa de work registers:
+A antiga suposição fixa:
 
 ```c
 .cs_reg_count = 96,
 ```
 
-No hardware de referência isso podia terminar em:
+podia terminar em:
 
 ```text
 overflowed register file
@@ -56,24 +54,39 @@ A correção passou a derivar a quantidade real informada pela interface CSF:
 .cs_reg_count = (stream_features & 0xff) + 1,
 ```
 
-e a reserva de registradores não preservados foi ajustada para respeitar a informação fornecida pela interface:
+e a reserva de registradores não preservados foi ajustada para respeitar a interface:
 
 ```c
 .nr_kernel_registers =
    MAX2(csif_info->unpreserved_cs_reg_count, 4)
 ```
 
-No dispositivo testado, `stream_features` implicava aproximadamente 114 registradores, e a correção eliminou o abort observado naquele caminho.
+No dispositivo testado, `stream_features` implicava aproximadamente 114 registradores, eliminando o abort observado naquele caminho.
 
 ## Memória / dma-heap
 
-Na lineage documentada da beta pública, o **device node** do dma-heap é aberto com:
+Na lineage histórica e atual, o **device node** do dma-heap pode ser aberto com:
 
 ```text
 O_RDONLY | O_CLOEXEC
 ```
 
-Isso não significa que os dma-buf FDs retornados pela operação de alocação sejam read-only: a solicitação de alocação continua usando os flags documentados para os FDs retornados.
+Isso não torna os dma-buf FDs alocados read-only: a solicitação de alocação mantém os flags apropriados para os FDs retornados.
+
+## GPU WAIT64 interno
+
+A Beta 2 deriva da autoridade técnica que promoveu espera GPU para dependências binárias locais/internas elegíveis.
+
+Boundary:
+
+- local/internal eligible: CS `SYNC64` wait;
+- imported `sync_file`: CPU/KCPU fallback;
+- timeline wrapper: fallback;
+- mixed waits: fallback;
+- wait-only submit: fallback;
+- mais de três wait cells: fallback.
+
+A condição validada é `GREATER(target - 1)`, e as esperas são emitidas antes de resource acquisition para evitar bloquear recursos necessários ao producer.
 
 ## Modificadores DRM
 
