@@ -22,7 +22,10 @@
 
 ---
 
-> ⚠️ **Aviso:** projeto experimental. Testes podem travar aplicações, causar falhas da GPU ou exigir reinicialização do dispositivo. O projeto não declara conformidade Vulkan nem compatibilidade universal.
+> [!WARNING]
+> **Projeto experimental.** Testes podem travar aplicações, causar falhas da GPU ou exigir reinicialização do dispositivo.
+>
+> O projeto **não declara conformidade Vulkan** nem compatibilidade universal.
 
 # 🚀 Estado atual
 
