@@ -31,15 +31,25 @@ the extracted directory, and run `. ./env.sh` from Bash.
 The G720 development branch uses PanVK directly over the proprietary kbase/CSF
 interface. The current native path does not require a Vulkan wrapper.
 
-Tessellation compiler plumbing and direct-draw runtime groundwork are under
-active development. Build-validated work currently reaches the physical
-software-VS compute dispatch, a CSF wait dependency, and the TCS compute
-dispatch, with per-command-buffer poly heap and per-draw libpoly parameter
-storage already wired.
+The public `0.1.0-beta.1.9.4` checkpoint remains frozen at
+`3549264275c9663ed73e01d652f4c0d16f21df22`.  The development notes below
+describe newer source work and do not retroactively alter that release.
 
-`tessellationShader` remains disabled. Tessellator execution, TES/final indexed
-draw execution, hardware runtime validation, indirect tessellation, and safe
-simultaneous execution of the same tessellation command buffer remain pending.
+The direct PanVK/libpoly tessellation sequence has executed end-to-end on
+Mali-G720 and has focused semantic hardware validation for triangle, quad and
+isoline cases, including fractional-spacing coverage.  The current
+`g720-development` physical-device feature table advertises both
+`geometryShader` and `tessellationShader`; broader CTS/conformance and
+surrounding-state coverage remains ongoing.
+
+Commit `980ac91de74df5e5807e6269fd2531fa3ee6b4e5` promoted the qualified
+local/internal binary-semaphore GPU WAIT64 path.  Eligible internal waits use
+CS `SYNC64` with the validated `GREATER(target - 1)` contract, while imported
+`sync_file` payloads, timeline wrappers, mixed/wait-only cases and oversized
+wait sets retain the existing CPU/KCPU fallback.
+
+These statements are development-branch status, not Vulkan conformance or
+universal Mali/kbase compatibility claims.
 
 ## Basic usage
 

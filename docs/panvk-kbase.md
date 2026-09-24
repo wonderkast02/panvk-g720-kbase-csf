@@ -31,6 +31,46 @@ the variable unset to use the established Bifrost compiler path.
 - Mali-G925 (reported as G725 by the tested platform). `vulkaninfo` and
   `vkmark`, including X11 presentation, have been tested.
 
+## Mali-G720 development checkpoint
+
+The G720 source-development branch is newer than the frozen public
+`0.1.0-beta.1.9.4` checkpoint.  Post-beta development must not be interpreted
+as changing the bytes, tag, branch or claims of that public beta.
+
+The internal GPU-wait promotion landed in commit
+`980ac91de74df5e5807e6269fd2531fa3ee6b4e5`.  In the current development
+source:
+
+- `geometryShader` and `tessellationShader` are advertised by the PanVK
+  physical-device feature table;
+- the direct G720 tessellation path has focused hardware and semantic
+  validation, while broader CTS/conformance and edge-case coverage continues;
+- local/internal PanVK binary-semaphore dependencies can use the native GPU
+  WAIT64 path described below.
+
+These are development-branch facts, not Vulkan conformance or universal
+compatibility claims.
+
+### Internal GPU WAIT64 synchronization
+
+For eligible local/internal PanVK binary payloads, the kbase submit path
+collects up to three internal wait cells and emits CS `SYNC64` waits with the
+validated `GREATER(target - 1)` condition.  The waits are emitted before
+resource acquisition so a blocked consumer does not reserve execution
+resources required by its producer.
+
+The native path is intentionally restricted.  Imported `sync_file` payloads,
+timeline wrappers, mixed wait sets, wait-only submits and oversized wait sets
+continue to use the existing CPU/KCPU bridge.  External synchronization
+semantics are therefore not replaced by this optimization.
+
+For diagnostics, the native internal-wait path can be disabled without changing
+the external fallback behavior:
+
+```sh
+export PANVK_KBASE_GPU_INTERNAL_WAITS=0
+```
+
 ## Requirements
 
 - An arm64 Linux userspace and Vulkan loader.

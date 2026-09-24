@@ -99,6 +99,31 @@ target:
 
 Do not interpret these results as Vulkan conformance or full Vulkan support.
 
+Development checkpoint after synchronization promotion
+-------------------------------------------------------
+
+The local/internal binary-semaphore GPU-wait work was promoted to
+``g720-development`` by commit
+``980ac91de74df5e5807e6269fd2531fa3ee6b4e5``.  For eligible internal PanVK
+payloads, the kbase path can keep the dependency on the GPU by emitting CS
+``SYNC64`` waits using the validated ``GREATER(target - 1)`` contract.  The
+implementation accepts at most three wait cells per submit path and emits them
+before resource acquisition.
+
+The optimization is deliberately narrow.  Imported ``sync_file`` payloads,
+timeline wrappers, mixed wait sets, wait-only submits and oversized wait sets
+continue through the existing CPU/KCPU fallback.  This promotion does not
+replace the external synchronization path.
+
+The current ``g720-development`` source also advertises
+``geometryShader`` and ``tessellationShader``.  These statements describe the
+development branch only; they do not retroactively change the frozen public
+``0.1.0-beta.1.9.4`` checkpoint at
+``3549264275c9663ed73e01d652f4c0d16f21df22``.
+
+None of the development results above is a Vulkan conformance claim or a claim
+of universal Mali/kbase compatibility.
+
 G720 CS register fix
 --------------------
 
@@ -193,35 +218,37 @@ The following focused tests passed on Mali-G720 MC8:
 These tests establish functional direct-path execution and semantic correctness
 for the cases above. They are not Vulkan conformance claims.
 
-Feature exposure and remaining work
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feature exposure and continuing validation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``tessellationShader`` remains ``false`` in the published checkpoint.
+The current ``g720-development`` source advertises both ``geometryShader`` and
+``tessellationShader``.  This is a development-branch state newer than the
+frozen public beta; it must not be read as a retroactive change to
+``0.1.0-beta.1.9.4``.
 
-The full path was activated temporarily for focused hardware validation and is
-kept gated while the remaining integration work is completed. In particular,
-the project still needs:
+The direct tessellation path and the focused semantic hardware cases above are
+validated.  Broader qualification remains active, including:
 
-- audit and validation of application indirect tessellation draws;
+- application indirect tessellation draws;
 - multiple sequential tessellation draws and complete PanVK dirty-state
   handling;
 - query/XFB and other surrounding graphics-state interactions;
-- simultaneous-use / command-buffer lifetime audit;
+- simultaneous-use / command-buffer lifetime coverage;
 - winding, patch-discard, limits and invariance coverage;
 - fractional-spacing property testing for non-integer levels where exact
   tessellation coordinates are implementation-defined;
 - focused regression testing and broader Vulkan CTS coverage;
-- cleanup of remaining development diagnostics before feature advertisement.
+- cleanup of remaining development diagnostics.
 
-``vertexPipelineStoresAndAtomics`` is also not force-enabled on this G720
-checkpoint merely to run tessellation tests.
+``vertexPipelineStoresAndAtomics`` is not force-enabled merely to run
+tessellation tests.
 
-The feature will only be advertised after these remaining areas are validated.
+These are continuing validation/coverage items, not Vulkan conformance claims.
 
-Unsupported / deferred features (current state)
------------------------------------------------
-- geometryShader — disabled
-- tessellationShader — disabled; direct path hardware-validated, integration/conformance work remains
+Feature state / deferred features (current development branch)
+--------------------------------------------------------------
+- geometryShader — advertised in current ``g720-development`` source
+- tessellationShader — advertised in current ``g720-development`` source; direct path hardware-validated for the focused cases above
 - multiViewport — disabled
 - textureCompressionBC — unsupported on this hardware path
 - shaderClipDistance — deferred
