@@ -116,13 +116,25 @@ continue through the existing CPU/KCPU fallback.  This promotion does not
 replace the external synchronization path.
 
 The current ``g720-development`` source also advertises
-``geometryShader`` and ``tessellationShader``.  These statements describe the
-development branch only; they do not retroactively change the frozen public
-``0.1.0-beta.1.9.4`` checkpoint at
-``3549264275c9663ed73e01d652f4c0d16f21df22``.
+``geometryShader`` and ``tessellationShader``.
 
-None of the development results above is a Vulkan conformance claim or a claim
-of universal Mali/kbase compatibility.
+Public Beta 2 checkpoint
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The current public community-test prerelease is
+``PanVK G720 0.1.0 Beta 2`` with technical tag ``0.1.0-beta.2``.  The tag
+points to ``f1d7bed571766c49e5dd464f92d1fda264612311``, a documentation-only
+child of the qualified technical source commit
+``980ac91de74df5e5807e6269fd2531fa3ee6b4e5``.  The distributed driver binary
+is the byte-exact qualified G4-B artifact from that technical commit; the
+documentation-only child does not imply a driver rebuild.
+
+The historical ``0.1.0-beta.1.9.4`` release remains immutable and is not
+renamed or retagged.  From Beta 2 onward, prereleases use the conventional
+SemVer sequence ``0.1.0-beta.N``.
+
+None of the development or Beta 2 results above is a Vulkan conformance claim
+or a claim of universal Mali/kbase compatibility.
 
 G720 CS register fix
 --------------------

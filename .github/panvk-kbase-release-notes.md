@@ -31,9 +31,16 @@ the extracted directory, and run `. ./env.sh` from Bash.
 The G720 development branch uses PanVK directly over the proprietary kbase/CSF
 interface. The current native path does not require a Vulkan wrapper.
 
-The public `0.1.0-beta.1.9.4` checkpoint remains frozen at
-`3549264275c9663ed73e01d652f4c0d16f21df22`.  The development notes below
-describe newer source work and do not retroactively alter that release.
+The current public community-test prerelease is
+`PanVK G720 0.1.0 Beta 2`, tag `0.1.0-beta.2`, at
+`f1d7bed571766c49e5dd464f92d1fda264612311`.  That tag target is a
+documentation-only child of the qualified technical source commit
+`980ac91de74df5e5807e6269fd2531fa3ee6b4e5`; the distributed driver binary
+reuses the byte-exact qualified G4-B artifact from the technical commit.
+
+The historical `0.1.0-beta.1.9.4` checkpoint remains immutable.  Public
+prereleases from Beta 2 onward use the conventional SemVer sequence
+`0.1.0-beta.N`.
 
 The direct PanVK/libpoly tessellation sequence has executed end-to-end on
 Mali-G720 and has focused semantic hardware validation for triangle, quad and

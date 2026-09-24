@@ -33,9 +33,17 @@ the variable unset to use the established Bifrost compiler path.
 
 ## Mali-G720 development checkpoint
 
-The G720 source-development branch is newer than the frozen public
-`0.1.0-beta.1.9.4` checkpoint.  Post-beta development must not be interpreted
-as changing the bytes, tag, branch or claims of that public beta.
+The current public community-test prerelease is `0.1.0-beta.2`
+(`PanVK G720 0.1.0 Beta 2`).  Its tag points to
+`f1d7bed571766c49e5dd464f92d1fda264612311`, which is a documentation-only
+child of the qualified technical source commit
+`980ac91de74df5e5807e6269fd2531fa3ee6b4e5`.  The distributed driver reuses
+the byte-exact G4-B qualified artifact; publishing the documentation child did
+not rebuild the driver.
+
+The historical `0.1.0-beta.1.9.4` release remains immutable.  Starting with
+Beta 2, public prereleases follow the conventional SemVer sequence
+`0.1.0-beta.N`.
 
 The internal GPU-wait promotion landed in commit
 `980ac91de74df5e5807e6269fd2531fa3ee6b4e5`.  In the current development
