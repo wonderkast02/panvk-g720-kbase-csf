@@ -229,36 +229,57 @@ Ao relatar um problema, inclua dispositivo, GPU, Kbase, tag, SHA-256 do pacote, 
 
 ---
 
-# 💙 Créditos e agradecimentos
+# 💙 Créditos & Agradecimentos
 
-O projeto é construído sobre software livre, pesquisa aberta e testes da comunidade.
+O **Drive G720 / PanVK** existe graças a uma ampla base de software livre, engenharia reversa, pesquisa aberta e testes comunitários.
 
 ## 🧩 Bases e contribuidores
 
-**[Leegao](https://github.com/leegao)** · **[funnymdzz](https://github.com/funnymdzz)** · **Icecream95 / Panfork** · **Saikatsaha1996** · **wonderkast02 / Drive G720**
+**[Leegao](https://github.com/leegao)** — pelo `mesa-funnymdzz`, pelo `bionic-vulkan-wrapper` e por trabalho público utilizado como base ou referência durante a integração PanVK/Kbase.
 
-## 🌐 Projetos de origem
+**[funnymdzz](https://github.com/funnymdzz)** — por trabalho-base e referências utilizadas na evolução do caminho PanVK/Kbase.
+
+**Icecream95 / Panfork** — pelo trabalho pioneiro no ecossistema Panfrost/Panfork, engenharia reversa de GPUs Mali e infraestrutura relacionada.
+
+**Saikatsaha1996** — por referências e experimentação comunitária envolvendo GPUs Mali modernas, CSF e Panfrost/PanVK.
+
+**wonderkast02 / Drive G720** — pela integração, pesquisa, desenvolvimento, qualificação e validação específica do caminho Mali-G720 / Kbase / CSF deste projeto.
+
+## 🌐 Upstream
 
 **Mesa 3D** · **Panfrost** · **PanVK** · **Panfork**
 
-## 🔺 Arm e Vulkan
+e seus mantenedores e contribuidores.
 
-**Arm** · **Khronos Group**
+## 🔺 Arm & Vulkan
 
-## 🎮 Compatibilidade e validação
+**Arm** — arquitetura Mali, Kbase, CSF e interfaces utilizadas pelo projeto.
+
+**Khronos Group** — Vulkan, SPIR-V e infraestrutura de testes/conformidade do ecossistema Vulkan.
+
+## 🎮 Compatibilidade & validação
 
 **DXVK** · **Wine** · **Box64** · **Winlator** · **Vortek**
 
-## 🛠️ Ferramentas e infraestrutura
+## 🛠️ Ferramentas & infraestrutura
 
 **Termux** · **Termux:X11** · **Android / AOSP / Bionic** · **Android NDK** · **LLVM / Clang** · **Meson** · **Ninja** · **SPIRV-Tools** · **VK-GL-CTS**
 
 ## 🔬 Referências técnicas históricas
 
-`leegao/bionic-vulkan-wrapper` · `funnymdzz/mali_fxxker` · `Saikatsaha1996/mesa-Panfrost-G610` · `yoshi3jp/android_kernel_samsung_a25ex_mt6835` · `nangitagamer777-art/Panvk_Kmod`
+- `leegao/bionic-vulkan-wrapper`
+- `funnymdzz/mali_fxxker`
+- `Saikatsaha1996/mesa-Panfrost-G610`
+- `yoshi3jp/android_kernel_samsung_a25ex_mt6835`
+- `nangitagamer777-art/Panvk_Kmod`
+- forks e builds experimentais de DXVK usados durante investigação
 
-## 🧑‍💻 Testadores e comunidade
+A presença nesta lista **não significa necessariamente que código desses projetos esteja presente na build atual**.
 
-Obrigado a todos que contribuíram com testes, logs, reproduções, documentação, pesquisa e discussão técnica.
+## 🧑‍💻 Testadores & comunidade
 
-> Cada projeto, arquivo e componente mantém seus próprios autores, direitos autorais e termos de licença. As referências acima não implicam afiliação, patrocínio ou endosso oficial ao Drive G720.
+Agradecimento a todos que contribuíram com testes em hardware Mali, logs, dumps, reproduções, descoberta de regressões, comparação entre ambientes, feedback, documentação, pesquisa e discussão técnica.
+
+> **Cada projeto, arquivo e componente mantém seus próprios autores, copyrights e termos de licença.**
+>
+> A presença nesta seção não implica afiliação, patrocínio ou endosso oficial ao Drive G720.
